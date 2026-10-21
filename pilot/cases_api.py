@@ -123,6 +123,34 @@ def make_router(db, require, manager, scope, audit):
             audit(c,u["id"],"case:draft",row["id"])
         return row
 
+    @router.post("/import")
+    async def import_cases(request:Request):
+        d=await request.json()
+        if not isinstance(d,list) or not 1<=len(d)<=20:
+            raise HTTPException(422,"Выберите JSON-файл с 1–20 кейсами")
+        items=[case_payload(x) for x in d]
+        with db() as c:
+            u=require(c,request);manager(u)
+            c.execute("SELECT pg_advisory_xact_lock(823411)")
+            created=[];skipped=0
+            for x in items:
+                old=c.execute("""SELECT id FROM case_scenarios WHERE restaurant=%s AND title=%s
+                                  AND competency=%s AND action=%s AND scenario=%s
+                                  AND source=%s AND criteria=%s LIMIT 1""",
+                              (u["restaurant"],x["title"],x["competency"],x["action"],
+                               x["scenario"],x["source"],Jsonb(x["criteria"]))).fetchone()
+                if old:
+                    skipped+=1
+                    continue
+                row=c.execute("""INSERT INTO case_scenarios
+                    (author,restaurant,title,competency,action,scenario,source,criteria)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (u["id"],u["restaurant"],x["title"],x["competency"],x["action"],
+                     x["scenario"],x["source"],Jsonb(x["criteria"]))).fetchone()
+                created.append(row["id"])
+                audit(c,u["id"],"case:import-draft",row["id"])
+        return {"created":created,"skipped":skipped,"status":"draft"}
+
     @router.put("/{case_id}")
     async def edit_case(case_id:int,request:Request):
         item=case_payload(await request.json())
