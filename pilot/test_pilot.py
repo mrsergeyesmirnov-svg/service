@@ -53,7 +53,7 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',json={},headers=m).status_code,422)
         self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m).status_code,200)
         self.assertEqual(self.client.put(f'/api/courses/{cid}',json=payload,headers=m).status_code,409)
-        assignment={'course_id':cid,'staff_ids':[101],'deadline':'2099-11-01','max_attempts':2}
+        assignment={'course_id':cid,'staff_ids':[101],'deadline':'2099-11-01','max_attempts':3}
         aid=self.client.post('/api/assignments',json=assignment,headers=m).json()['created'][0]
         self.assertEqual(self.client.post('/api/assignments',json=assignment,headers=m).json()['created'],[])
         self.assertEqual(self.client.get(f'/api/assignments/{aid}',headers=other).status_code,404)
@@ -65,8 +65,11 @@ class Integration(unittest.TestCase):
         result=self.client.post(f'/api/assignments/{aid}/submit',json=submit,headers=s)
         self.assertEqual(result.status_code,200,result.text);self.assertEqual(result.json()['score'],0)
         self.assertEqual(self.client.post(f'/api/assignments/{aid}/submit',json=submit,headers=s).json(),result.json())
+        self.assertEqual(self.client.get(f'/api/assignments/{aid}',headers=s).json()['review'],[])
         submit={'request_id':str(uuid.uuid4()),'answers':[0]}
         self.assertTrue(self.client.post(f'/api/assignments/{aid}/submit',json=submit,headers=s).json()['passed'])
+        reviewed=self.client.get(f'/api/assignments/{aid}',headers=s).json()
+        self.assertTrue(reviewed['finished']);self.assertEqual(reviewed['review'][0]['explanation'],'Because')
         submit['request_id']=str(uuid.uuid4())
         self.assertEqual(self.client.post(f'/api/assignments/{aid}/submit',json=submit,headers=s).status_code,409)
         self.assertEqual(self.client.get(f'/api/assignments/{aid}/results',headers=local).status_code,403)
