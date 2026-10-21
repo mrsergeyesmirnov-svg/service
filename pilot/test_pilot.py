@@ -107,6 +107,49 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.get('/api/cases',headers=s).json(),[])
         self.assertEqual(len(self.client.get('/api/cases',headers=m).json()),1)
 
+    def test_case_practice_permissions_quota_and_concurrency(self):
+        import cases_api
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        m=self.auth(999);s=self.auth(101);other=self.auth(102);local=self.auth(103)
+        scenario=dict(title='Training scenario',competency='Care',action='Confirm details',
+            scenario='A guest asks about ingredients.',source='Synthetic test only',
+            criteria=['Ask kitchen','Never guess'])
+        cid=self.client.post('/api/cases',json=scenario,headers=m).json()['id']
+        url=f'/api/cases/{cid}'
+        payload={'request_id':str(uuid.uuid4()),'answer':'I will ask the kitchen to confirm the ingredients before answering the guest.'}
+        self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,404)
+        self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=local).status_code,403)
+        self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=m).status_code,200)
+        feedback={k:'Training feedback' for k in ('summary','strengths','improvements','next_step')}
+        started=Event();release=Event()
+        def evaluate(*args):
+            started.set()
+            if not release.wait(10):raise RuntimeError('Concurrent request timed out')
+            return feedback
+        with patch.object(cases_api,'evaluate_with_yandex',side_effect=evaluate) as ai:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first=pool.submit(self.client.post,url+'/practice',json=payload,headers=s)
+                self.assertTrue(started.wait(5))
+                try:
+                    second=self.client.post(url+'/practice',json=payload,headers=s)
+                    self.assertEqual(second.status_code,409,second.text)
+                finally:release.set()
+                self.assertEqual(first.result().status_code,200)
+            self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).json(),feedback)
+            self.assertEqual(ai.call_count,1)
+        self.assertEqual(self.client.get(url+'/results',headers=s).status_code,403)
+        self.assertEqual(self.client.get(url+'/results',headers=local).status_code,403)
+        self.assertEqual(len(self.client.get(url+'/results',headers=m).json()),1)
+        self.assertEqual(self.client.get(url+'/history',headers=other).json(),[])
+        with patch.object(cases_api,'evaluate_with_yandex',return_value=feedback) as ai:
+            for _ in range(4):
+                payload['request_id']=str(uuid.uuid4())
+                self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,200)
+            payload['request_id']=str(uuid.uuid4())
+            self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,429)
+            self.assertEqual(ai.call_count,4)
+
     def test_invite_contact_and_permissions(self):
         m=self.auth(999)
         invite=self.client.post('/api/invites',json={'role':'waiter'},headers=m).json()['url'].split('=')[1]
@@ -121,3 +164,4 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post('/api/invites',json={'role':'manager'},headers=m).status_code,422)
 
 if __name__=='__main__':unittest.main(verbosity=2)
+
