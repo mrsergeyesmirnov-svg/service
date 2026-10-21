@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
+from cases_api import make_router
 
 TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
@@ -84,6 +85,8 @@ async def limits(request, call_next):
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
     return response
+
+app.include_router(make_router(db, require, manager, scope, audit))
 
 @app.get('/api/health')
 def health():
