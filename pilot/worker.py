@@ -83,4 +83,4 @@ if __name__=='__main__':
             for _ in range(10):deliver()
         except Exception as e:
             # Never log exception text: HTTP errors may contain the bot token.
-            print('Worker retry: '+type(e).__name__,flush=True);time.sleep(5)
+            print('Worker retry: '+type(e).__name__+(f' code={e.code}' if isinstance(e,TelegramError) else ''),flush=True);time.sleep(5)
