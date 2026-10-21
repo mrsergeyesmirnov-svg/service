@@ -77,6 +77,29 @@ class Integration(unittest.TestCase):
         with patch.object(worker,'telegram',return_value={'message_id':123}) as tg:
             worker.deliver();self.assertEqual(tg.call_args.kwargs['chat_id'],101)
         with server.db() as c:self.assertEqual(c.execute('SELECT state FROM outbox').fetchone()['state'],'sent')
+    def test_course_pack_upload(self):
+        m=self.auth(999);s=self.auth(101);local=self.auth(103)
+        item={'title':'Welcome','kind':'service','body':'Source-grounded training','source':'Internal source p1',
+              'questions':[{'question':'Which action?','options':['Help','Ignore'],'correct':0,
+                            'explanation':'Internal standard','source':'Internal source p1'}],
+              'pass_score':80}
+        pack={'courses':[item,{**item,'title':'Guest care'}]}
+        self.assertEqual(self.client.post('/api/courses/import',json=pack,headers=s).status_code,403)
+        self.assertEqual(self.client.post('/api/courses/import',json=pack,headers=local).status_code,403)
+        invalid={'courses':[item,{**item,'title':'Invalid','pass_score':0}]}
+        self.assertEqual(self.client.post('/api/courses/import',json=invalid,headers=m).status_code,422)
+        self.assertEqual(len(self.client.get('/api/courses',headers=m).json()),0)
+        first=self.client.post('/api/courses/import',json=pack,headers=m)
+        self.assertEqual(first.status_code,200,first.text)
+        self.assertEqual(first.json()['count'],2)
+        self.assertFalse(first.json()['published'])
+        imported=self.client.get('/api/courses',headers=m).json()
+        self.assertEqual(len(imported),2)
+        self.assertTrue(all(not x['published'] for x in imported))
+        duplicate=self.client.post('/api/courses/import',json=pack,headers=m)
+        self.assertEqual(duplicate.status_code,409)
+        self.assertEqual(len(self.client.get('/api/courses',headers=m).json()),2)
+
     def test_invite_contact_and_permissions(self):
         m=self.auth(999)
         invite=self.client.post('/api/invites',json={'role':'waiter'},headers=m).json()['url'].split('=')[1]
