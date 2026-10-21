@@ -1,0 +1,40 @@
+name: MOJO pilot tests
+
+on:
+  pull_request:
+    paths:
+      - "pilot/**"
+      - ".github/workflows/mojo-pilot-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: academy
+          POSTGRES_PASSWORD: test-pass
+          POSTGRES_DB: academy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U academy -d academy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: pilot
+    env:
+      DATABASE_URL: postgresql://academy:test-pass@localhost:5432/academy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Unit and isolated PostgreSQL integration tests
+        run: python -m unittest test_cases test_pilot
