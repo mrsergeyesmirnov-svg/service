@@ -207,12 +207,12 @@ def assignments(request:Request):
     with db() as c:
         u=require(c,request)
         return c.execute('''SELECT a.*,s.name,c.title,c.kind,c.pass_score,jsonb_array_length(c.questions) AS questions,
-+        (SELECT count(*) FROM attempts t WHERE t.assignment_id=a.id) AS attempts,
-+        (SELECT max(score) FROM attempts t WHERE t.assignment_id=a.id) AS best_score,
-+        EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id AND passed) AS passed,
-+        (SELECT state FROM outbox o WHERE o.assignment_id=a.id ORDER BY id LIMIT 1) AS notification
-+        FROM assignments a JOIN courses c ON c.id=a.course_id JOIN staff s ON s.id=a.staff_id
-+        WHERE (a.staff_id=%s OR (%s AND (%s OR s.restaurant=%s))) ORDER BY a.deadline,a.id'''.replace('+',''),(u['id'],u['role'] in ('manager','local'),u['role']=='manager',u['restaurant'])).fetchall()
+        (SELECT count(*) FROM attempts t WHERE t.assignment_id=a.id) AS attempts,
+        (SELECT max(score) FROM attempts t WHERE t.assignment_id=a.id) AS best_score,
+        EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id AND passed) AS passed,
+        (SELECT state FROM outbox o WHERE o.assignment_id=a.id ORDER BY id LIMIT 1) AS notification
+        FROM assignments a JOIN courses c ON c.id=a.course_id JOIN staff s ON s.id=a.staff_id
+        WHERE (a.staff_id=%s OR (%s AND (%s OR s.restaurant=%s))) ORDER BY a.deadline,a.id''',(u['id'],u['role'] in ('manager','local'),u['role']=='manager',u['restaurant'])).fetchall()
 
 @app.get('/api/assignments/{aid}')
 def assignment(aid:int,request:Request):
