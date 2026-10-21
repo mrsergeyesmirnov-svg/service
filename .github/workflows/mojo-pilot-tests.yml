@@ -36,5 +36,10 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Check JavaScript and shell deployment syntax
+        working-directory: .
+        run: |
+          node --check pilot/pilot.js
+          bash -n pilot/update-pilot-only.sh
       - name: Unit and isolated PostgreSQL integration tests
         run: python -m unittest test_cases test_pilot
