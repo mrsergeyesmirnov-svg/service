@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 
 ROUTER = APIRouter(prefix="/api/cases")
 AI_URL = "https://ai.api.cloud.yandex.net/v1/chat/completions"
-PRIVATE_DATA = re.compile(r"[A-Za-z0-9_.+%-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}|\\+?\\d[\\d() -]{8,}\\d")
+PRIVATE_DATA = re.compile(r"[A-Za-z0-9_.+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\+?\d[\d() -]{8,}\d")
 
 def required(value, name, limit=200):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
