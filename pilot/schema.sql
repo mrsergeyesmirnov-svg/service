@@ -38,3 +38,29 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS assignments_staff ON assignments(staff_id);
 CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(state,next_try);
+
+-- Practice cases are separate from scored quizzes: LLM guidance never grants admission.
+CREATE TABLE IF NOT EXISTS case_scenarios (
+ id BIGSERIAL PRIMARY KEY,
+ author BIGINT NOT NULL REFERENCES staff(id),
+ restaurant TEXT NOT NULL,
+ title TEXT NOT NULL,
+ competency TEXT NOT NULL,
+ action TEXT NOT NULL,
+ scenario TEXT NOT NULL,
+ source TEXT NOT NULL,
+ criteria JSONB NOT NULL,
+ published BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS case_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ case_id BIGINT NOT NULL REFERENCES case_scenarios(id),
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ request_id UUID NOT NULL,
+ answer TEXT NOT NULL,
+ feedback JSONB NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(case_id,staff_id,request_id)
+);
+CREATE INDEX IF NOT EXISTS case_attempts_staff ON case_attempts(staff_id,created_at);

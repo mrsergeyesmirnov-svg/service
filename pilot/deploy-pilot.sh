@@ -20,7 +20,7 @@ for i in $(seq 1 30); do docker exec service-academy-db pg_isready -U academy -d
 docker exec service-academy-db pg_isready -U academy -d academy
 docker build -t service-academy-pilot -f pilot/Dockerfile .
 # Refuse deployment if core tests fail. Test database objects are isolated in a temporary schema.
-docker run --rm --network service-academy-net --env-file "$CFG" service-academy-pilot python test_pilot.py
+docker run --rm --network service-academy-net --env-file "$CFG" service-academy-pilot python -m unittest test_cases test_pilot
 if docker inspect service-academy-api >/dev/null 2>&1; then docker rm -f service-academy-api; fi
 docker run -d --name service-academy-api --restart unless-stopped --network service-academy-net --memory 256m --env-file "$CFG" --log-opt max-size=10m --log-opt max-file=3 service-academy-pilot
 for i in $(seq 1 30); do docker exec service-academy-api python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')" >/dev/null 2>&1 && break; sleep 1; done

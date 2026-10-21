@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
+from cases_api import make_router
 
 TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
@@ -85,6 +86,8 @@ async def limits(request, call_next):
     response.headers['Referrer-Policy']='no-referrer'
     return response
 
+app.include_router(make_router(lambda: db(), require, manager, scope, audit))
+
 @app.get('/api/health')
 def health():
     with db() as c: c.execute('SELECT 1')
@@ -153,6 +156,32 @@ async def create_course(request:Request):
         row=c.execute('INSERT INTO courses(author,restaurant,title,kind,body,source,questions,pass_score) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',(u['id'],u['restaurant'],title,kind,body,source,Jsonb(qs),score)).fetchone()
         audit(c,u['id'],'course:create',row['id'])
     return row
+
+@app.post('/api/courses/import')
+async def import_course_drafts(request:Request):
+    """Manager-only JSON bundle import. Files stay on the academy server, not GitHub."""
+    d=await request.json()
+    if not isinstance(d,list) or not 1<=len(d)<=20:
+        raise HTTPException(422,'Выберите JSON-файл с 1–20 курсами')
+    validated=[course_data(item) for item in d]
+    with db() as c:
+        u=require(c,request);manager(u)
+        c.execute('SELECT pg_advisory_xact_lock(823410)')
+        created=[];skipped=0
+        for title,kind,body,source,qs,score in validated:
+            already=c.execute('''SELECT id FROM courses WHERE restaurant=%s AND title=%s AND kind=%s
+                        AND body=%s AND source=%s AND questions=%s AND pass_score=%s
+                        LIMIT 1''',(u['restaurant'],title,kind,body,source,Jsonb(qs),score)).fetchone()
+            if already:
+                skipped+=1
+                continue
+            row=c.execute('''INSERT INTO courses(author,restaurant,title,kind,body,source,questions,pass_score)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                        (u['id'],u['restaurant'],title,kind,body,source,Jsonb(qs),score)).fetchone()
+            created.append(row['id'])
+            audit(c,u['id'],'course:import-draft',row['id'])
+    return {'created':created,'skipped':skipped,'status':'draft'}
+
 
 @app.put('/api/courses/{cid}')
 async def edit_course(cid:int,request:Request):
