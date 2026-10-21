@@ -77,6 +77,36 @@ class Integration(unittest.TestCase):
         with patch.object(worker,'telegram',return_value={'message_id':123}) as tg:
             worker.deliver();self.assertEqual(tg.call_args.kwargs['chat_id'],101)
         with server.db() as c:self.assertEqual(c.execute('SELECT state FROM outbox').fetchone()['state'],'sent')
+    def test_bulk_import_private_drafts(self):
+        m=self.auth(999);s=self.auth(101)
+        course=dict(title='MOJO menu lesson',kind='ttk',body='Ingredient, sauce and service details.',
+                    source='MOJO station cards p.14',pass_score=80,
+                    questions=[dict(question='What comes separately?',options=['Sauce','None'],
+                                    correct=0,explanation='Sauce served separately',source='p.14')])
+        url='/api/courses/import'
+        self.assertEqual(self.client.post(url,json=[course],headers=s).status_code,403)
+        result=self.client.post(url,json=[course],headers=m)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()['status'],'draft')
+        self.assertEqual(len(result.json()['created']),1)
+        self.assertEqual(self.client.post(url,json=[course],headers=m).json()['skipped'],1)
+        with server.db() as c:
+            self.assertEqual(c.execute('SELECT count(*) n FROM courses').fetchone()['n'],1)
+            self.assertFalse(c.execute('SELECT published FROM courses').fetchone()['published'])
+            self.assertEqual(c.execute('SELECT count(*) n FROM outbox').fetchone()['n'],0)
+        scenario=dict(title='Guest has food allergies',competency='Guest care',
+                      action='Confirm ingredients',scenario='Guest asks about unknown ingredients.',
+                      source='MOJO ServiceBook 2026 p.7',
+                      criteria=['Never guess ingredients','Ask kitchen to check current recipe'])
+        url='/api/cases/import'
+        self.assertEqual(self.client.post(url,json=[scenario],headers=s).status_code,403)
+        created=self.client.post(url,json=[scenario],headers=m)
+        self.assertEqual(created.status_code,200,created.text)
+        self.assertEqual(len(created.json()['created']),1)
+        self.assertEqual(self.client.post(url,json=[scenario],headers=m).json()['skipped'],1)
+        self.assertEqual(self.client.get('/api/cases',headers=s).json(),[])
+        self.assertEqual(len(self.client.get('/api/cases',headers=m).json()),1)
+
     def test_invite_contact_and_permissions(self):
         m=self.auth(999)
         invite=self.client.post('/api/invites',json={'role':'waiter'},headers=m).json()['url'].split('=')[1]
