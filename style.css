@@ -2,3 +2,6 @@
 
 /* Keep decorative glyphs from rendering as color emoji on iOS. */
 .courseart .art{display:none}
+
+/* Consistent vector navigation icons across iOS and desktop. */
+.navicon{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}.navicon svg{display:block;width:22px;height:22px}nav button{min-height:44px}
