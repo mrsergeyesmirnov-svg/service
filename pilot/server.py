@@ -220,8 +220,11 @@ def assignment(aid:int,request:Request):
         u=require(c,request)
         row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
-        row['questions']=[{'question':q['question'],'options':q['options']} for q in row['questions']]
+        questions=row['questions']
         row['history']=c.execute('SELECT id,score,passed,created_at FROM attempts WHERE assignment_id=%s ORDER BY id',(aid,)).fetchall()
+        row['finished']=any(t['passed'] for t in row['history']) or len(row['history'])>=row['max_attempts']
+        row['questions']=[{'question':q['question'],'options':q['options']} for q in questions]
+        row['review']=questions if row['finished'] else []
         return row
 
 @app.post('/api/assignments/{aid}/acknowledge')
@@ -243,6 +246,7 @@ async def submit(aid:int,request:Request):
         if not row: raise HTTPException(404)
         old=c.execute('SELECT id,score,passed FROM attempts WHERE assignment_id=%s AND request_id=%s',(aid,rid)).fetchone()
         if old:return old
+        if c.execute('SELECT 1 FROM attempts WHERE assignment_id=%s AND passed LIMIT 1',(aid,)).fetchone():raise HTTPException(409,'Тест уже сдан')
         if not row['acknowledged_at']:raise HTTPException(409,'Сначала ознакомьтесь с материалом')
         if not row['questions']:raise HTTPException(422,'У этого материала нет теста')
         count=c.execute('SELECT count(*) n FROM attempts WHERE assignment_id=%s',(aid,)).fetchone()['n']
