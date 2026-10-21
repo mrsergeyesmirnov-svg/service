@@ -154,6 +154,35 @@ async def create_course(request:Request):
         audit(c,u['id'],'course:create',row['id'])
     return row
 
+@app.post('/api/courses/import')
+async def import_course_pack(request:Request):
+    """Private JSON course pack to manager-only, unpublished draft courses."""
+    with db() as c:
+        u=require(c,request)
+        if u['role']!='manager': raise HTTPException(403,'Импорт программы доступен менеджеру по сервису')
+        payload=await request.json()
+        items=payload.get('courses') if isinstance(payload,dict) else None
+        if not isinstance(items,list) or not 1<=len(items)<=20:
+            raise HTTPException(422,'В пакете должно быть от 1 до 20 материалов')
+        # Validate all drafts before inserting any of them.
+        validated=[]
+        for item in items:
+            if not isinstance(item,dict): raise HTTPException(422,'Некорректный курс')
+            validated.append(course_data(item))
+        digest=hashlib.sha256(json.dumps(items,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        key='course_import_ui:'+digest
+        c.execute('SELECT pg_advisory_xact_lock(823411)')
+        if c.execute('SELECT 1 FROM settings WHERE key=%s',(key,)).fetchone():
+            raise HTTPException(409,'Этот пакет уже импортирован. Проверьте список черновиков')
+        ids=[]
+        for title,kind,body,source,questions,score in validated:
+            row=c.execute('INSERT INTO courses(author,restaurant,title,kind,body,source,questions,pass_score) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+                          (u['id'],u['restaurant'],title,kind,body,source,Jsonb(questions),score)).fetchone()
+            ids.append(row['id'])
+            audit(c,u['id'],'course:import-draft',row['id'])
+        c.execute('INSERT INTO settings(key,value) VALUES(%s,%s)',(key,str(len(ids))))
+    return {'created':ids,'count':len(ids),'published':False}
+
 @app.put('/api/courses/{cid}')
 async def edit_course(cid:int,request:Request):
     d=await request.json(); title,kind,body,source,qs,score=course_data(d)
