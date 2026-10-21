@@ -17,7 +17,7 @@ if(view==='cases'){await casesPage();return}
 if(view==='profile'){root.innerHTML=`<h1>${esc(user.name)}</h1><div class="card"><p>${esc(roles[user.role])} · ${esc(user.restaurant)}</p><p>Телефон: ${esc(user.phone||'не указан')}</p><p>Чтобы добавить номер, отправьте боту /phone.</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`;return}
 if(view==='assignments'){cache=await api('assignments');root.innerHTML=`<h1>${isManager()?'Прохождение обучения':'Мои задания'}</h1>`+overview(cache)+(cache.length?cache.map(a=>`<article class="card"><span class="badge">${esc(status(a))}</span><h2>${esc(a.title)}</h2>${isManager()?`<p>${esc(a.name)}</p>`:''}<p class="muted">До ${esc(dateLabel(a.deadline))} · попыток ${a.attempts}/${a.max_attempts}${a.best_score!==null?' · лучший результат '+a.best_score+'%':''}</p>${isManager()?`<p class="muted">Уведомление в Telegram: ${esc(({sent:'отправлено',pending:'в очереди',failed:'не доставлено — проверьте, открыт ли чат с ботом'})[a.notification]||'нет')}</p>${btn('Посмотреть ответы','results',a.id)}${a.staff_id===user.id?btn('Пройти самому','lesson',a.id,'secondary'):''}`:btn('Открыть','lesson',a.id)}</article>`).join(''):'<div class="card">Пока нет назначенных материалов.</div>');return}
 if(view==='team'){cache=await api('team');root.innerHTML=`<h1>Команда</h1><div class="card"><label>Пригласить как<select id="invite-role"><option value="trainee">Стажёр</option><option value="waiter">Официант</option></select></label>${btn('Создать приглашение','invite')}<div id="invite-result"></div></div>`+cache.map(s=>`<div class="card"><h2>${esc(s.name)}</h2><p>${esc(roles[s.role])} · ${esc(s.restaurant)}</p>${s.role==='trainee'?btn('Перевести в официанты','promote',s.id):''}</div>`).join('');return}
-if(view==='courses'){cache=await api('courses');root.innerHTML='<h1>Обучение</h1><p>'+btn('Создать материал','new')+'</p>'+cache.map(c=>`<div class="card"><span class="badge">${c.published?'Опубликовано':'Черновик'} · версия #${c.id}</span><h2>${esc(c.title)}</h2><p>${c.questions.length} вопросов · порог ${c.pass_score}%</p><div class="actions">${btn('Предпросмотр для сотрудника','preview',c.id,'secondary')}${c.published?btn('Назначить','assign',c.id)+btn('Создать новую версию','copy',c.id,'secondary'):btn('Редактировать','edit',c.id)+btn('Проверить и опубликовать','publish',c.id,'secondary')}</div></div>`).join('');return}}
+if(view==='courses'){cache=await api('courses');root.innerHTML='<h1>Обучение</h1><p>'+btn('Создать материал','new')+'</p>'+bulkImportPanel('courses')+cache.map(c=>`<div class="card"><span class="badge">${c.published?'Опубликовано':'Черновик'} · версия #${c.id}</span><h2>${esc(c.title)}</h2><p>${c.questions.length} вопросов · порог ${c.pass_score}%</p><div class="actions">${btn('Предпросмотр для сотрудника','preview',c.id,'secondary')}${c.published?btn('Назначить','assign',c.id)+btn('Создать новую версию','copy',c.id,'secondary'):btn('Редактировать','edit',c.id)+btn('Проверить и опубликовать','publish',c.id,'secondary')}</div></div>`).join('');bindBulkImport('courses');return}}
 function qHtml(q,i){return `<fieldset class="question" data-question="${i}"><legend>Вопрос ${i+1}</legend><label>Формулировка<input name="question" required value="${esc(q.question)}"></label><label>Варианты — каждый с новой строки<textarea name="options" required>${esc(q.options.join('\n'))}</textarea></label><label>Номер правильного ответа<input name="correct" type="number" min="1" max="6" required value="${q.correct+1}"></label><label>Объяснение<textarea name="explanation" required>${esc(q.explanation)}</textarea></label><label>Страница / раздел источника<input name="source" required value="${esc(q.source)}"></label>${btn('Убрать вопрос','remove-q',i,'secondary')}</fieldset>`}
 function readDraft(){const f=$('#editor');const data=new FormData(f);draft={...draft,title:data.get('title'),kind:data.get('kind'),body:data.get('body'),source:data.get('source'),pass_score:Number(data.get('pass_score')),questions:[...f.querySelectorAll('[data-question]')].map(q=>({question:q.querySelector('[name=question]').value,options:q.querySelector('[name=options]').value.split('\n').map(x=>x.trim()).filter(Boolean),correct:Number(q.querySelector('[name=correct]').value)-1,explanation:q.querySelector('[name=explanation]').value,source:q.querySelector('[name=source]').value}))}}
 function editor(){ $('#app').innerHTML=`<h1>${draft.id?'Редактировать':'Создать'} материал</h1><form id="editor" class="card"><label>Название<input name="title" required maxlength="200" value="${esc(draft.title)}"></label><label>Тип<select name="kind">${[['service','Материал по сервису + тест'],['ttk','Технологическая карта + тест'],['notice','Обязательное ознакомление']].map(([v,l])=>`<option value="${v}" ${draft.kind===v?'selected':''}>${l}</option>`).join('')}</select></label><label>Материал<textarea name="body" class="lesson" required>${esc(draft.body)}</textarea></label><label>Документ-источник и версия<input name="source" required value="${esc(draft.source)}"></label><label>Проходной балл, %<input name="pass_score" type="number" min="1" max="100" value="${draft.pass_score}" required></label><div id="questions">${draft.questions.map(qHtml).join('')}</div><div class="actions">${btn('Добавить вопрос','add-q','','secondary')}<button type="submit">Сохранить черновик</button></div><p class="muted">Для ознакомления без теста уберите вопросы. Генерация ИИ, загрузка документов и аудио пока не подключены.</p></form>`;$('#editor').onsubmit=async e=>{e.preventDefault();readDraft();try{await api('courses'+(draft.id?'/'+draft.id:''),draft.id?'PUT':'POST',draft);view='courses';await render()}catch(e){error(e)}};$('#editor').querySelectorAll('[data-action]').forEach(b=>b.type='button')}
@@ -33,11 +33,12 @@ async function casesPage(){
   caseCache=await api('cases');
   const root=$('#app');
   let html="<h1>Практика на смене</h1><p class='muted'>Решаем ситуации из жизни MOJO. ИИ помогает увидеть сильные стороны и улучшить решение, но не ставит допуск к работе.</p>";
-  if(isManager())html+="<p>"+btn('Создать кейс','case-new')+"</p>";
+  if(isManager())html+="<p>"+btn('Создать кейс','case-new')+"</p>"+bulkImportPanel('cases');
   html+=caseCache.length?caseCache.map(c=>{
     return "<div class='card'><span class='badge'>"+esc(c.published?'Опубликовано':'Черновик')+"</span><h2>"+esc(c.title)+"</h2><p>"+esc(c.competency)+"</p><p class='muted'>Навык: "+esc(c.action)+"</p><div class='actions'>"+(c.published?btn('Решить кейс','case-open',c.id):btn('Предпросмотр и проверка','case-review',c.id))+"</div></div>";
   }).join(''):"<div class='card'>Пока нет утверждённых практических кейсов. Менеджер добавит ситуации на основе ServiceBook.</div>";
   root.innerHTML=html;
+  if(isManager())bindBulkImport('cases');
 }
 function caseEditor(caseId){
   const editing=caseCache.find(c=>c.id===caseId&&!c.published);
@@ -110,5 +111,33 @@ async function caseDetail(id){
         "<p class='muted'>Обратная связь ИИ — учебная, а не решение о допуске.</p></article>";
       $('#case-feedback').scrollIntoView({behavior:'smooth'});
     }catch(err){button.disabled=false;error(err)}
+  };
+}
+
+
+function bulkImportPanel(kind){
+  const type=kind==='cases'?'кейсы':'курсы';
+  return "<form class='card' id='bulk-import'>"+
+    "<h2>Добавить готовые "+type+"</h2>"+
+    "<p class='muted'>Выберите подготовленный JSON-файл. Импортируются только черновики — сотрудники не получат уведомлений до утверждения и назначения.</p>"+
+    "<label>Файл курсов или кейсов в JSON<input id='bulk-json' type='file' accept='.json,application/json' required></label>"+
+    "<button type='submit'>Добавить в Академию</button>"+
+    "<p class='muted'>Загрузить можно до 20 материалов за раз. Повторная загрузка одинаковых материалов не создаёт дубликаты.</p>"+
+    "</form>";
+}
+function bindBulkImport(kind){
+  const form=$('#bulk-import');if(!form)return;
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const f=$('#bulk-json')?.files?.[0];if(!f)return;
+    if(f.size>280000){error('Пакет слишком большой. Разбейте JSON на несколько файлов до 280 КБ.');return}
+    const submit=form.querySelector('button');submit.disabled=true;
+    try{
+      const data=JSON.parse(await f.text());
+      if(!Array.isArray(data)||data.length<1||data.length>20)throw Error('Ожидается список от 1 до 20 материалов');
+      const r=await api(kind+'/import','POST',data);
+      alert('Добавлено черновиков: '+r.created.length+'. Уже существовали: '+r.skipped+'.');
+      if(kind==='cases')await casesPage();else await render();
+    }catch(e){error(e)}finally{submit.disabled=false}
   };
 }
