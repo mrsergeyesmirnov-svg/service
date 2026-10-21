@@ -243,6 +243,8 @@ async def submit(aid:int,request:Request):
         if not row: raise HTTPException(404)
         old=c.execute('SELECT id,score,passed FROM attempts WHERE assignment_id=%s AND request_id=%s',(aid,rid)).fetchone()
         if old:return old
+        if c.execute('SELECT EXISTS(SELECT 1 FROM attempts WHERE assignment_id=%s AND passed) AS done',(aid,)).fetchone()['done']:
+            raise HTTPException(409,'Тест уже сдан')
         if not row['acknowledged_at']:raise HTTPException(409,'Сначала ознакомьтесь с материалом')
         if not row['questions']:raise HTTPException(422,'У этого материала нет теста')
         count=c.execute('SELECT count(*) n FROM attempts WHERE assignment_id=%s',(aid,)).fetchone()['n']
