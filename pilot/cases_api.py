@@ -6,6 +6,7 @@ import uuid
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
+from starlette.concurrency import run_in_threadpool
 
 ROUTER = APIRouter(prefix="/api/cases")
 AI_URL = "https://ai.api.cloud.yandex.net/v1/chat/completions"
@@ -190,6 +191,17 @@ def make_router(db, require, manager, scope, audit):
             return c.execute("""SELECT id,answer,feedback,created_at FROM case_attempts
                                 WHERE case_id=%s AND staff_id=%s ORDER BY id DESC LIMIT 10""",(case_id,u["id"])).fetchall()
 
+    @router.get("/{case_id}/results")
+    def results(case_id:int,request:Request):
+        with db() as c:
+            u=require(c,request);manager(u)
+            row=c.execute("SELECT restaurant FROM case_scenarios WHERE id=%s",(case_id,)).fetchone()
+            if not row:raise HTTPException(404,"Кейс не найден")
+            scope(u,row["restaurant"])
+            return c.execute("""SELECT a.id,a.answer,a.feedback,a.created_at,s.name
+                FROM case_attempts a JOIN staff s ON s.id=a.staff_id
+                WHERE a.case_id=%s ORDER BY a.id DESC LIMIT 100""",(case_id,)).fetchall()
+
     @router.post("/{case_id}/practice")
     async def practice(case_id:int,request:Request):
         d=await request.json()
@@ -204,6 +216,10 @@ def make_router(db, require, manager, scope, audit):
             row=c.execute("SELECT * FROM case_scenarios WHERE id=%s AND restaurant=%s AND published",
                           (case_id,u["restaurant"])).fetchone()
             if not row:raise HTTPException(404,"Кейс не опубликован")
+            # Hold a per-person transaction lock through the provider call and insert.
+            # A busy request is rejected before it can spend another AI call.
+            if not c.execute("SELECT pg_try_advisory_xact_lock(823412,%s) AS locked",(u["id"] % 2147483647,)).fetchone()["locked"]:
+                raise HTTPException(409,"Предыдущий разбор ещё выполняется. Подождите его завершения.")
             previous=c.execute("""SELECT feedback FROM case_attempts WHERE case_id=%s AND staff_id=%s AND request_id=%s""",
                                (case_id,u["id"],rid)).fetchone()
             if previous:return previous["feedback"]
@@ -212,10 +228,7 @@ def make_router(db, require, manager, scope, audit):
                               (u["id"],)).fetchone()["n"]
             if count>=5:raise HTTPException(429,"Лимит: пять разборов за 24 часа")
             sid=u["id"]
-        feedback=evaluate_with_yandex(row,answer)
-        with db() as c:
-            u=require(c,request)
-            if u["id"]!=sid:raise HTTPException(403)
+            feedback=await run_in_threadpool(evaluate_with_yandex,row,answer)
             inserted=c.execute("""INSERT INTO case_attempts(case_id,staff_id,request_id,answer,feedback)
                                 VALUES(%s,%s,%s,%s,%s) ON CONFLICT(case_id,staff_id,request_id)
                                 DO NOTHING RETURNING id""",
@@ -226,3 +239,4 @@ def make_router(db, require, manager, scope, audit):
                                    (case_id,sid,rid)).fetchone()["feedback"]
         return feedback
     return router
+
