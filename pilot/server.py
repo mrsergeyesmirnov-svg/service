@@ -86,7 +86,7 @@ async def limits(request, call_next):
     response.headers['Referrer-Policy']='no-referrer'
     return response
 
-app.include_router(make_router(db, require, manager, scope, audit))
+app.include_router(make_router(lambda: db(), require, manager, scope, audit))
 
 @app.get('/api/health')
 def health():
