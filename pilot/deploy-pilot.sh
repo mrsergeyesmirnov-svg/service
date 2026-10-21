@@ -34,7 +34,9 @@ service.139.100.239.232.sslip.io {
  header X-Content-Type-Options nosniff
  @pilot path /pilot/* /api/*
  handle @pilot {
-  request_body { max_size 300KB }
+  request_body {
+   max_size 300KB
+  }
   reverse_proxy service-academy-api:8000
  }
  redir /pilot /pilot/ 308
