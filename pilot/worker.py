@@ -4,6 +4,8 @@ from threading import Thread
 from datetime import datetime, timezone, timedelta
 from server import db, TOKEN, OWNER, URL, audit
 
+WELCOME = '<b>Академия сервиса MOJO</b>\nОбучение для уверенной работы в зале.\n\n<b>В Академии</b>\n• Меню, напитки и стандарты сервиса\n• Уроки, тесты и практика общения с гостями\n• Твой прогресс и результаты\n\nОткрой Академию и выбери материал для изучения. Напоминания об обязательном обучении будут приходить сюда.\n\n<i>Добавить телефон в профиль — /phone. Это необязательно.</i>'
+
 class TelegramError(Exception):
     def __init__(self,code,retry=60):self.code=code;self.retry=retry
 
@@ -43,7 +45,7 @@ def process(update):
                 u={'active':True}
             if not u['active']:return
             c.execute('UPDATE staff SET bot_started=true WHERE id=%s',(sid,))
-            queue(c,sid,'Добро пожаловать в Академию сервиса. Здесь будут приходить обязательные уроки и тесты. Откройте приложение кнопкой ниже.\nЧтобы привязать номер телефона, отправьте /phone.',key)
+            queue(c,sid,WELCOME,key)
         elif u and u['active'] and txt=='/phone':
             telegram('sendMessage',chat_id=sid,text='Если вы согласны передать свой номер для профиля сотрудника, нажмите кнопку. Без передачи номера обучение остаётся доступным.',reply_markup={'keyboard':[[{'text':'Передать мой номер','request_contact':True}]],'resize_keyboard':True,'one_time_keyboard':True})
         elif u and u['active'] and msg.get('contact',{}).get('user_id')==sid:
@@ -58,7 +60,7 @@ def deliver():
         if not row:return False
         link=URL+(f'?assignment={row["assignment_id"]}' if row['assignment_id'] else '')
         try:
-            telegram('sendMessage',chat_id=row['recipient'],text=row['message'],reply_markup={'inline_keyboard':[[{'text':'Открыть Академию','web_app':{'url':link}}]]})
+            telegram('sendMessage',chat_id=row['recipient'],text=row['message'],**({'parse_mode':'HTML'} if row['message']==WELCOME else {}),reply_markup={'inline_keyboard':[[{'text':'Открыть Академию','web_app':{'url':link}}]]})
             c.execute("UPDATE outbox SET state='sent',sent_at=now(),error=NULL WHERE id=%s",(row['id'],))
         except TelegramError as e:
             tries=row['tries']+1
