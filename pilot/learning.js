@@ -98,9 +98,26 @@ function showStudyResult(r){
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results'].includes(action))return;
+ if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save'].includes(action))return;
  b.disabled=true;
  try{
+  if(action==='course-map')await editCourseDishMap(Number(id));
+  if(action==='course-map-add'){
+    const dish=Number(id);
+    if(courseMapSelected.length>=80)throw Error('В одном курсе максимум 80 карточек');
+    if(!courseMapSelected.includes(dish))courseMapSelected.push(dish);
+    renderCourseMap();
+  }
+  if(action==='course-map-remove'){
+    courseMapSelected=courseMapSelected.filter(x=>x!==Number(id));renderCourseMap();
+  }
+  if(action==='course-map-up'||action==='course-map-down'){
+    const idx=courseMapSelected.indexOf(Number(id)),other=idx+(action==='course-map-up'?-1:1);
+    if(idx>=0&&other>=0&&other<courseMapSelected.length)
+     [courseMapSelected[idx],courseMapSelected[other]]=[courseMapSelected[other],courseMapSelected[idx]];
+    renderCourseMap();
+  }
+  if(action==='course-map-save')await saveCourseDishMap();
   if(action==='study')await study(Number(id));
   if(action==='direction'){view='catalog';await render();filterCourses(id)}
   if(action==='filter')filterCourses(id);
@@ -119,3 +136,53 @@ document.addEventListener('click',async e=>{
  }catch(err){error(err)}finally{b.disabled=false}
 });
 function filterCourses(id){$('#course-list').innerHTML=learningCourses.filter(c=>id==='all'||c.category===id).map(courseCard).join('')||'<div class="card">В этом направлении пока нет утверждённых курсов.</div>';document.querySelectorAll('[data-action=filter]').forEach(b=>b.classList.toggle('active',b.dataset.id===id))}
+
+
+// Managers curate the chapter sequence from reviewed dish cards.
+// This does not change a course's questions or previous exam attempts.
+let courseMapId=null,courseMapTitle='',courseMapSelected=[],courseMapAvailable=[],courseMapSearch='';
+async function editCourseDishMap(id){
+ if(!isManager())throw Error('Доступ только менеджеру');
+ const [mapping,cards]=await Promise.all([api('learning/'+id+'/dish-map'),api('dishes')]);
+ courseMapId=id;courseMapTitle=mapping.title;
+ courseMapSelected=[...mapping.dish_ids];courseMapAvailable=cards.filter(c=>c.published);
+ courseMapSearch='';
+ $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
+ '<h1>Главы курса</h1><p class="muted">'+esc(courseMapTitle)+'</p>'+
+ '<div class="card"><p>Выбери опубликованные карточки блюд и установи порядок. Сотрудник будет читать их вместо сырого текста станционок, после чего сможет пройти существующий тест.</p>'+
+ '<p class="muted">При изменении рецептуры карточка снова станет черновиком и исчезнет из учебного курса до повторной проверки.</p></div>'+
+ '<h2>Порядок глав</h2><div id="course-map-picked"></div>'+
+ '<h2>Добавить из каталога</h2><label>Поиск по названию и разделу'+
+ '<input type="search" id="course-map-search" placeholder="Например: роллы, песто, салат"></label>'+
+ '<div id="course-map-available"></div>'+
+ '<div class="map-sticky">'+btn('Сохранить состав курса','course-map-save')+'</div>';
+ $('#course-map-search').oninput=e=>{courseMapSearch=e.target.value;renderCourseMap()};
+ renderCourseMap();
+}
+function renderCourseMap(){
+ if(courseMapId===null)return;
+ const byId=new Map(courseMapAvailable.map(c=>[c.id,c]));
+ const chosen=courseMapSelected.map((id,index)=>{
+  const c=byId.get(id),caption=c?esc(c.title):'Карточка №'+id+' (сейчас не опубликована)';
+  return '<div class="map-row"><span><b>'+(index+1)+'. '+caption+'</b>'+
+  (c?'<small>'+esc(c.section)+'</small>':'<small>Удали или утверди карточку заново</small>')+'</span>'+
+  '<div class="map-buttons">'+(index?btn('↑','course-map-up',id,'secondary'):'')+
+  (index<courseMapSelected.length-1?btn('↓','course-map-down',id,'secondary'):'')+
+  btn('Убрать','course-map-remove',id,'secondary')+'</div></div>';
+ }).join('');
+ $('#course-map-picked').innerHTML=chosen||'<div class="card"><p>Пока нет глав. Добавь карточки из каталога ниже.</p></div>';
+ const keyword=courseMapSearch.toLocaleLowerCase('ru');
+ const options=courseMapAvailable.filter(c=>!courseMapSelected.includes(c.id) &&
+  (c.title+' '+c.section).toLocaleLowerCase('ru').includes(keyword)).slice(0,80);
+ $('#course-map-available').innerHTML=options.map(c=>
+  '<div class="map-row"><span><b>'+esc(c.title)+'</b><small>'+esc(c.section)+'</small></span>'+
+  btn('Добавить +','course-map-add',c.id,'secondary')+'</div>').join('')||
+  '<p class="muted">Нет подходящих опубликованных блюд. Добавить новые можно в разделе «Карточки блюд».</p>';
+}
+async function saveCourseDishMap(){
+ if(courseMapId===null)return;
+ if(!courseMapSelected.length&&!confirm('Удалить все привязки? Тогда снова будет показан исходный текст курса.'))return;
+ const r=await api('learning/'+courseMapId+'/dish-map','PUT',{dish_ids:courseMapSelected});
+ courseMapId=null;
+ view='courses';await render();
+}
