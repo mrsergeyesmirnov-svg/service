@@ -79,7 +79,7 @@ def grade(qs, answers):
 @app.middleware('http')
 async def limits(request, call_next):
     upload = request.url.path == '/api/dishes/import' or (request.url.path.startswith('/api/dishes/') and request.url.path.endswith('/photo'))
-    limit = 20_000_000 if upload else (2_500_000 if request.url.path == '/api/voice/transcribe' else 300_000)
+    limit = 20_000_000 if upload or request.url.path == '/api/learning/import-pdf' else (2_500_000 if request.url.path == '/api/voice/transcribe' else 300_000)
     try: content_len = int(request.headers.get('content-length') or '0')
     except ValueError: content_len = limit+1
     if content_len>limit: return __import__('fastapi').responses.JSONResponse({'detail':'Слишком большой запрос'},status_code=413)
@@ -215,6 +215,8 @@ async def publish(cid:int,request:Request):
         if not row: raise HTTPException(404)
         scope(u,row['restaurant'])
         if row['archived']: raise HTTPException(409,'Нельзя опубликовать архивную версию. Создайте копию.')
+        if row['kind'] != 'notice' and not row['questions']:
+            raise HTTPException(409,'Сначала добавь и проверь вопросы теста. Для курса только на чтение выбери тип «Ознакомление».')
         c.execute('UPDATE courses SET published=true WHERE id=%s',(cid,));audit(c,u['id'],'course:approved',cid)
     return {'ok':True}
 
