@@ -155,8 +155,6 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             raise HTTPException(422,'Опиши действия и слова гостю (40–1600 символов)')
         if PRIVATE_DATA.search(answer):
             raise HTTPException(422,'Не указывай телефон, электронную почту или данные реального гостя')
-        if not os.getenv('YANDEX_API_KEY') or not os.getenv('YANDEX_FOLDER_ID'):
-            raise HTTPException(503,'ИИ-тренер пока не подключён. Менеджер должен настроить Yandex AI Studio.')
         with db() as c:
             u=require(c,request);course_row=course(c,u,cid)
             # Only currently published cards assigned to this exact course are eligible.
@@ -165,6 +163,8 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                  WHERE m.course_id=%s AND d.id=%s AND d.restaurant=%s
                    AND d.published AND NOT d.archived""",(cid,did,u['restaurant'])).fetchone()
             if not dish: raise HTTPException(404,'Карточка не доступна для практики')
+            if not os.getenv('YANDEX_API_KEY') or not os.getenv('YANDEX_FOLDER_ID'):
+                raise HTTPException(503,'ИИ-тренер пока не подключён. Менеджер должен настроить Yandex AI Studio.')
             # Lock this user during reservation so parallel requests cannot exceed quota.
             c.execute('SELECT id FROM staff WHERE id=%s FOR UPDATE',(u['id'],))
             existing=c.execute("""SELECT status,feedback FROM dish_practice_attempts
@@ -197,12 +197,13 @@ def make_learning_router(db, require, manager, scope, grade, audit):
         }
         try:
             feedback=await run_in_threadpool(evaluate_with_yandex,case,answer)
-        except HTTPException:
+        except Exception as exc:
             with db() as c:
                 c.execute("""UPDATE dish_practice_attempts SET status='failed',updated_at=now()
                     WHERE staff_id=%s AND course_id=%s AND dish_id=%s AND request_id=%s
                     AND status='pending'""",(staff_id,cid,did,rid))
-            raise
+            if isinstance(exc,HTTPException): raise
+            raise HTTPException(502,'Не удалось получить разбор ИИ, попробуй позже') from None
         with db() as c:
             saved=c.execute("""UPDATE dish_practice_attempts SET status='done',
                    feedback=%s,updated_at=now() WHERE staff_id=%s AND course_id=%s
