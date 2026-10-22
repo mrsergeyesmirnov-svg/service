@@ -14,6 +14,27 @@ def signed(uid=101,age=0):
     return urlencode(d)
 
 class Core(unittest.TestCase):
+    def test_pdf_numbered_sections_become_distinct_chapters(self):
+        import fitz
+        from course_pdf import course_chapters_from_pdf
+        doc=fitz.open()
+        headings=["1. WOW philosophy", "2. Involvement and initiative", "3. Guest atmosphere"]
+        for page_index in range(2):
+            page=doc.new_page()
+            section_indexes=[0,1] if page_index==0 else [2]
+            for j,idx in enumerate(section_indexes):
+                y=80+j*260
+                page.insert_text((40,y),headings[idx],fontsize=17)
+                for line_index in range(4):
+                    page.insert_text((45,y+30+line_index*19),
+                       "Customer experience improves when the team observes guest needs and helps promptly.",
+                       fontsize=10)
+        chapters=course_chapters_from_pdf(doc.tobytes(),"WOW.pdf")
+        self.assertEqual(len(chapters),3,[c["title"] for c in chapters])
+        self.assertTrue(chapters[0]["title"].startswith("1. WOW"))
+        self.assertTrue(chapters[1]["title"].startswith("2. Involvement"))
+        self.assertEqual(chapters[2]["source"],"WOW.pdf, стр. 2")
+
     def test_multiple_and_ingredient_recall(self):
         from questions import check,public_question
         multi={'type':'multiple','question':'Select','options':['A','B','C'],'correct':[0,2]}
