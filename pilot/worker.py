@@ -40,10 +40,12 @@ def process(update):
                 if not i:
                     # No membership is created without a valid invitation.
                     telegram('sendMessage',chat_id=sid,text='Для входа нужна действующая ссылка-приглашение от руководителя.');return
-                c.execute('INSERT INTO staff(id,name,role,restaurant,bot_started) VALUES(%s,%s,%s,%s,true)',(sid,name,i['role'],i['restaurant']))
+                c.execute('INSERT INTO staff(id,name,role,restaurant,bot_started,active) VALUES(%s,%s,%s,%s,true,false)',(sid,name,i['role'],i['restaurant']))
                 c.execute('UPDATE invites SET used_by=%s WHERE token=%s',(sid,invite));audit(c,sid,'invite:accepted',i['restaurant'])
-                u={'active':True}
-            if not u['active']:return
+                u={'active':False}
+            if not u['active']:
+                queue(c,sid,'Заявка в Академию MOJO отправлена. Руководитель подтвердит доступ после проверки вашего Telegram-аккаунта.',key)
+                return
             c.execute('UPDATE staff SET bot_started=true WHERE id=%s',(sid,))
             queue(c,sid,WELCOME,key)
         elif u and u['active'] and txt=='/phone':
