@@ -38,8 +38,9 @@ def approved_card_questions(chapters, course_id):
         # Open recall is checked deterministically, based on the approved composition.
         questions.append({
             "type": "ingredients",
-            "question": f'Вспомни состав «{title}». Перечисли пять компонентов по памяти (если в карточке меньше — все).',
+            "question": f'Назови по памяти {len(names)} компонентов из состава «{title}». Без подсказок.',
             "ingredients": [[name] for name in names],
+            "allowed_extra": [x for x in ingredients if normalize(x) not in {normalize(n) for n in names}],
             "options": [],
             "explanation": "Проверь состав по утверждённой карточке блюда, затем повтори пропущенные компоненты.",
             "source": source,
