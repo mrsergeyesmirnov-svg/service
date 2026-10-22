@@ -28,6 +28,37 @@ def chapters(body):
     return result
 
 
+def validate_text_chapters(raw):
+    if not isinstance(raw,list) or len(raw)>60:
+        raise HTTPException(422,'В курсе допускается не больше 60 глав')
+    result=[]
+    total=0
+    for item in raw:
+        if not isinstance(item,dict):
+            raise HTTPException(422,'Некорректная глава')
+        title=item.get('title')
+        body=item.get('body')
+        source=item.get('source','')
+        if (not isinstance(title,str) or not title.strip() or len(title)>180 or
+            not isinstance(body,str) or not body.strip() or len(body)>6000 or
+            not isinstance(source,str) or len(source)>500):
+            raise HTTPException(422,'Проверь название, текст и источник главы')
+        title,body,source=title.strip(),body.strip(),source.strip()
+        total+=len(title)+len(body)+len(source)
+        result.append(dict(title=title,body=body,source=source))
+    if total>120_000: raise HTTPException(413,'Материал слишком большой')
+    return result
+
+def text_outline_chapters(raw):
+    result=[]
+    for item in raw:
+        digest=hashlib.sha256(
+            (item['title']+'\n'+item['body']+'\n'+item['source']).encode()
+        ).hexdigest()[:20]
+        result.append(dict(id='text-'+digest,kind='text',**item))
+    return result
+
+
 def category(title):
     title = title.lower()
     if 'коф' in title: return 'coffee'
@@ -47,7 +78,11 @@ def make_learning_router(db, require, manager, scope, grade, audit):
 
     def course_chapters(c, r):
         mapped = dish_chapters(c, r['id'], r['restaurant'])
-        return chapters(r['body']) if mapped is None else mapped
+        if mapped is not None: return mapped
+        outline=c.execute('SELECT chapters FROM course_text_outline WHERE course_id=%s',
+                          (r['id'],)).fetchone()
+        if outline: return text_outline_chapters(outline['chapters'])
+        return chapters(r['body'])
 
     def progress(c, uid, cid):
         row = c.execute('SELECT chapter_ids FROM learning_progress WHERE staff_id=%s AND course_id=%s', (uid, cid)).fetchone()
@@ -117,6 +152,40 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             return {'score': row['score'], 'passed': row['passed'], 'review': [dict(q, answer=a, assessment=check(q,a)) for q,a in zip(r['questions'], row['answers'])]}
 
 
+
+    @router.get('/{cid}/text-chapters')
+    def get_text_chapters(cid:int,request:Request):
+        with db() as c:
+            u=require(c,request);manager(u)
+            row=c.execute('SELECT * FROM courses WHERE id=%s',(cid,)).fetchone()
+            if not row:raise HTTPException(404,'Курс не найден')
+            scope(u,row['restaurant'])
+            saved=c.execute('SELECT chapters FROM course_text_outline WHERE course_id=%s',(cid,)).fetchone()
+            return {'title':row['title'],'source':row['source'],
+                    'chapters':saved['chapters'] if saved else []}
+
+    @router.put('/{cid}/text-chapters')
+    async def put_text_chapters(cid:int,request:Request):
+        d=await request.json()
+        if not isinstance(d,dict):raise HTTPException(422,'Неверный формат')
+        items=validate_text_chapters(d.get('chapters'))
+        with db() as c:
+            u=require(c,request);manager(u)
+            row=c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
+            if not row:raise HTTPException(404,'Курс не найден')
+            scope(u,row['restaurant'])
+            if items and c.execute('SELECT 1 FROM course_dishes WHERE course_id=%s LIMIT 1',(cid,)).fetchone():
+                raise HTTPException(409,'Сначала убери привязанные карточки блюд из этого курса')
+            if items:
+                c.execute("""INSERT INTO course_text_outline(course_id,chapters)
+                       VALUES(%s,%s) ON CONFLICT(course_id) DO UPDATE
+                       SET chapters=EXCLUDED.chapters,updated_at=now()""",
+                       (cid,Jsonb(items)))
+            else:
+                c.execute('DELETE FROM course_text_outline WHERE course_id=%s',(cid,))
+            audit(c,u['id'],'learning:text-outline',cid)
+        return {'ok':True,'chapters':len(items)}
+
     @router.get('/{cid}/dish-map')
     def get_dish_map(cid:int,request:Request):
         with db() as c:
@@ -135,6 +204,8 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             r=c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
             if not r:raise HTTPException(404,'Курс не найден')
             scope(u,r['restaurant'])
+            if d.get('dish_ids') and c.execute('SELECT 1 FROM course_text_outline WHERE course_id=%s',(cid,)).fetchone():
+                raise HTTPException(409,'Сначала убери текстовые главы этого курса')
             save_mapping(c,r,d.get('dish_ids'))
             audit(c,u['id'],'learning:dish-map',cid)
             return {'ok':True,'dish_ids':map_details(c,cid)}
