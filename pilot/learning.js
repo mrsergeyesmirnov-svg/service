@@ -15,7 +15,7 @@ async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
  if(page==='catalog'){
-  root.innerHTML='<h1>Курсы</h1>'+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
+  root.innerHTML='<h1>Курсы</h1><p>'+btn(isManager()?'Карточки блюд · управление':'Карточки блюд','dish-open')+'</p>'+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
   return;
  }
  const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0),next=learningCourses.find(c=>!learningDone(c));
