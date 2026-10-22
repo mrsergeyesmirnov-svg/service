@@ -149,6 +149,15 @@ class Integration(unittest.TestCase):
             payload['request_id']=str(uuid.uuid4())
             self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,429)
             self.assertEqual(ai.call_count,4)
+        # Replaced published scenarios must not remain available to employees.
+        self.assertEqual(self.client.post(url+'/archive',json={'confirmed':True},headers=local).status_code,403)
+        self.assertEqual(self.client.post(url+'/archive',json={'confirmed':True},headers=m).status_code,200)
+        self.assertEqual(self.client.get('/api/cases',headers=s).json(),[])
+        admin_cases=self.client.get('/api/cases',headers=m).json()
+        self.assertTrue(admin_cases[0]['archived'])
+        self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,404)
+        self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=m).status_code,409)
+        self.assertEqual(len(self.client.get(url+'/results',headers=m).json()),5)
 
     def test_invite_contact_and_permissions(self):
         m=self.auth(999)
