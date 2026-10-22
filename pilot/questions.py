@@ -23,7 +23,8 @@ def check(q, answer):
         submitted={normalize(x) for x in re.split(r'[,;\n]+',answer) if normalize(x)}
         groups=[{normalize(x) for x in group} for group in q['ingredients']]
         missing=[q['ingredients'][i][0] for i,g in enumerate(groups) if not g & submitted]
-        extra=sorted(submitted-set().union(*groups))
+        approved_other={normalize(x) for x in q.get('allowed_extra',[])}
+        extra=sorted(submitted-set().union(*groups)-approved_other)
         return {'fraction':max(0,(len(groups)-len(missing)-len(extra))/len(groups)), 'missing':missing,'extra':extra}
     raise HTTPException(422,'Неизвестный формат вопроса')
 
