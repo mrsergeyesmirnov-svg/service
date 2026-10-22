@@ -14,6 +14,19 @@ def signed(uid=101,age=0):
     return urlencode(d)
 
 class Core(unittest.TestCase):
+    def test_multiple_and_ingredient_recall(self):
+        from questions import check,public_question
+        multi={'type':'multiple','question':'Select','options':['A','B','C'],'correct':[0,2]}
+        self.assertEqual(check(multi,[2,0])['fraction'],1)
+        self.assertEqual(check(multi,[0,1,2])['fraction'],0)
+        recall={'type':'ingredients','question':'Recall','ingredients':[['Test A','Alias A'],['Test B']]}
+        self.assertEqual(check(recall,' ALIAS A\nTest B')['fraction'],1)
+        self.assertEqual(check(recall,'Test A\nTest B\nInvented')['extra'],['invented'])
+        self.assertEqual(check(recall,'Test A')['missing'],['Test B'])
+        self.assertNotIn('ingredients',public_question(recall))
+        with self.assertRaises(server.HTTPException):check(multi,[True])
+        with self.assertRaises(server.HTTPException):check(multi,[0,0])
+
     def test_auth(self):
         self.assertEqual(server.validate_init(signed(),'test-token')['id'],101)
         for raw in [signed(age=4000),signed(age=-100),signed()+'&user=bad',signed().replace('101','102')]:
@@ -74,6 +87,22 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.get(path+'/results',headers=local).status_code,403)
         self.assertEqual(len(self.client.get(path+'/results',headers=m).json()),2)
         self.assertEqual(self.client.get('/api/assignments',headers=s).json(),[])
+
+    def test_new_question_formats_persist(self):
+        m=self.auth(999);s=self.auth(101)
+        qs=[dict(type='multiple',question='Choose all',options=['A','B','C'],correct=[0,2],explanation='Synthetic',source='Test'),dict(type='ingredients',question='Recall',ingredients=[['Test A','Alias A'],['Test B']],explanation='Synthetic',source='Test')]
+        payload=dict(title='Synthetic recall test',kind='ttk',body='Read',source='Synthetic',pass_score=80,questions=qs)
+        result=self.client.post('/api/courses',json=payload,headers=m)
+        self.assertEqual(result.status_code,200,result.text)
+        cid=result.json()['id'];path=f'/api/learning/{cid}'
+        self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m)
+        d=self.client.get(path,headers=s).json()
+        self.assertNotIn('ingredients',d['questions'][1])
+        for ch in d['chapters']:self.client.post(path+'/read',json={'chapter_id':ch['id']},headers=s)
+        r=self.client.post(path+'/submit',json={'request_id':str(uuid.uuid4()),'answers':[[0,2],'Alias A\nTest B']},headers=s)
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(r.json()['score'],100)
+        self.assertEqual(self.client.get(path,headers=self.auth(101)).json()['history'][0]['score'],100)
 
     def test_end_to_end(self):
         m=self.auth(999);s=self.auth(101);other=self.auth(102);local=self.auth(103)
