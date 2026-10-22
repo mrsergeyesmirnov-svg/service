@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
 from dishes import attach as attach_dishes
+from voice import make_voice_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -78,7 +79,7 @@ def grade(qs, answers):
 @app.middleware('http')
 async def limits(request, call_next):
     upload = request.url.path == '/api/dishes/import' or (request.url.path.startswith('/api/dishes/') and request.url.path.endswith('/photo'))
-    limit = 20_000_000 if upload else 300_000
+    limit = 20_000_000 if upload else (2_500_000 if request.url.path == '/api/voice/transcribe' else 300_000)
     try: content_len = int(request.headers.get('content-length') or '0')
     except ValueError: content_len = limit+1
     if content_len>limit: return __import__('fastapi').responses.JSONResponse({'detail':'Слишком большой запрос'},status_code=413)
@@ -91,6 +92,7 @@ async def limits(request, call_next):
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_learning_router(lambda: db(), require, manager, scope, grade, audit))
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
+app.include_router(make_voice_router(lambda: db(), require))
 
 @app.get('/api/health')
 def health():
@@ -311,6 +313,9 @@ def css():return FileResponse(BASE/'pilot.css',media_type='text/css')
 def learning_script():return FileResponse(BASE/'learning.js',media_type='application/javascript')
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
+
+@app.get('/pilot/voice.js')
+def voice_script():return FileResponse(BASE/'voice.js',media_type='application/javascript')
 
 @app.get('/pilot/dishes.js')
 def dishes_script():return FileResponse(BASE/'dishes.js',media_type='application/javascript')
