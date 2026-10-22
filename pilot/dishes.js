@@ -86,7 +86,7 @@ async function dishEditor(id){
  '<label>Раздел меню<input name="section" maxlength="100" required value="'+esc(c.section)+'"></label>'+
  '<label>Ингредиенты (по одному на строку)<textarea name="ingredients" rows="9">'+esc(c.ingredients.join("\n"))+'</textarea></label>'+
  '<label>Описание, особенности, подача<textarea name="description" rows="7" maxlength="4500">'+esc(c.description)+'</textarea></label>'+
- (id?'<label>Заменить фото (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>':"")+
+ '<label>'+(id?"Заменить фото":"Добавить фото")+' (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>'+
  '<p class="muted">После изменения опубликованная карточка станет черновиком до проверки менеджера.</p>'+
  '<button type="submit">Сохранить карточку</button></form>';
  $("#dish-edit-form").onsubmit=async e=>{
