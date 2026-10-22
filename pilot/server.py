@@ -107,7 +107,10 @@ async def login(request:Request):
     except (ValueError,KeyError,TypeError): raise HTTPException(401,'Войдите через Telegram')
     with db() as c:
         member=c.execute('SELECT * FROM staff WHERE id=%s AND active',(u['id'],)).fetchone()
-        if not member: raise HTTPException(403,'Сначала откройте приглашение руководителя и нажмите «Старт» в боте')
+        if not member:
+            pending=c.execute('SELECT id FROM staff WHERE id=%s AND NOT active',(u['id'],)).fetchone()
+            if pending:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO')
+            raise HTTPException(403,'Сначала откройте приглашение руководителя и нажмите «Старт» в боте')
         session=secrets.token_urlsafe(32)
         c.execute('DELETE FROM sessions WHERE expires_at<now()')
         c.execute("INSERT INTO sessions VALUES(%s,%s,now()+interval '8 hours')",(hashlib.sha256(session.encode()).hexdigest(),u['id']))
@@ -136,6 +139,26 @@ async def set_role(staff_id:int,request:Request):
         c.execute('UPDATE staff SET role=%s WHERE id=%s',(d['role'],staff_id));audit(c,u['id'],'role:'+d['role'],staff_id)
     return {'ok':True}
 
+@app.post('/api/team/{staff_id}/approve')
+def approve_member(staff_id:int, request:Request):
+    """A forwarded invite can create a pending record, not an active account."""
+    with db() as c:
+        u=require(c,request);manager(u)
+        target=c.execute('SELECT * FROM staff WHERE id=%s FOR UPDATE',(staff_id,)).fetchone()
+        if not target:raise HTTPException(404,'Заявка не найдена')
+        scope(u,target['restaurant'])
+        if target['role'] not in ('trainee','waiter'):
+            raise HTTPException(403,'Нельзя подтверждать руководителей через приглашение')
+        if not c.execute('SELECT 1 FROM invites WHERE used_by=%s LIMIT 1',(staff_id,)).fetchone():
+            raise HTTPException(409,'Учётная запись создана не через приглашение')
+        if target['active']:return {'active':True,'already_approved':True}
+        c.execute('UPDATE staff SET active=true WHERE id=%s',(staff_id,))
+        c.execute('''INSERT INTO outbox(recipient,message,dedupe)
+              VALUES(%s,%s,%s) ON CONFLICT(dedupe) DO NOTHING''',
+              (staff_id,'Доступ к Академии MOJO подтверждён. Теперь можно открыть обучение в Telegram.',f'approval:{staff_id}'))
+        audit(c,u['id'],'staff:approved',staff_id)
+        return {'active':True,'already_approved':False}
+
 @app.post('/api/invites')
 async def invite(request:Request):
     d=await request.json()
@@ -146,7 +169,7 @@ async def invite(request:Request):
         token=secrets.token_urlsafe(24)
         c.execute("INSERT INTO invites(token,role,restaurant,created_by,expires_at) VALUES(%s,%s,%s,%s,now()+interval '7 days')",(token,role,u['restaurant'],u['id']))
         audit(c,u['id'],'invite',hashlib.sha256(token.encode()).hexdigest()[:12])
-    return {'url':f'https://t.me/skill_mojo_bot?start={token}','expires_days':7,'single_use':True}
+    return {'url':f'https://t.me/skill_mojo_bot?start={token}','expires_days':7,'single_use':True,'manager_approval_required':True}
 
 @app.get('/api/courses')
 def courses(request:Request):
