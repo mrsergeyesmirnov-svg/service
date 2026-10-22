@@ -45,5 +45,6 @@ jobs:
           bash -n pilot/update-pilot-only.sh
           bash -n pilot/enable-dish-upload.sh
           bash -n pilot/configure-ai.sh
+          bash -n pilot/update-bot-only.sh
       - name: Unit and isolated PostgreSQL integration tests
         run: python -m unittest test_dishes test_cases test_pilot
