@@ -154,3 +154,7 @@ CREATE TABLE IF NOT EXISTS voice_transcriptions (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS voice_transcriptions_daily ON voice_transcriptions(staff_id,created_at);
+
+-- Archive obsolete tests/courses without deleting staff progress or historical exam results.
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS courses_catalog_visibility ON courses(restaurant,published,archived);
