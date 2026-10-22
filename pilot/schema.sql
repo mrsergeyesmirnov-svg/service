@@ -79,3 +79,27 @@ CREATE TABLE IF NOT EXISTS learning_attempts (
 );
 -- Published scenarios can be retired without deleting employee attempt history.
 ALTER TABLE case_scenarios ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+
+
+-- Private editable dish cards, kept separately from published immutable course versions.
+CREATE TABLE IF NOT EXISTS dish_cards (
+ id BIGSERIAL PRIMARY KEY,
+ restaurant TEXT NOT NULL,
+ created_by BIGINT NOT NULL REFERENCES staff(id),
+ title TEXT NOT NULL,
+ section TEXT NOT NULL,
+ ingredients JSONB NOT NULL DEFAULT '[]',
+ description TEXT NOT NULL DEFAULT '',
+ photo BYTEA,
+ source_name TEXT NOT NULL DEFAULT 'Ручная карточка',
+ source_page INTEGER,
+ source_slot INTEGER NOT NULL DEFAULT 0,
+ source_hash TEXT,
+ warning TEXT,
+ published BOOLEAN NOT NULL DEFAULT FALSE,
+ archived BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(restaurant,source_hash,source_page,source_slot)
+);
+CREATE INDEX IF NOT EXISTS dish_cards_visible ON dish_cards(restaurant,published,archived);
