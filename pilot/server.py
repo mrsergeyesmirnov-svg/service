@@ -262,7 +262,7 @@ async def assign(request:Request):
 def assignments(request:Request):
     with db() as c:
         u=require(c,request)
-        return c.execute('''SELECT a.*,s.name,c.title,c.kind,c.pass_score,jsonb_array_length(c.questions) AS questions,
+        return c.execute('''SELECT a.*,s.name,c.title,c.kind,c.pass_score,c.archived,jsonb_array_length(c.questions) AS questions,
         (SELECT count(*) FROM attempts t WHERE t.assignment_id=a.id) AS attempts,
         (SELECT max(score) FROM attempts t WHERE t.assignment_id=a.id) AS best_score,
         EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id AND passed) AS passed,
