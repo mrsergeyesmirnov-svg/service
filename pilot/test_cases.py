@@ -1,7 +1,8 @@
 import json,os,unittest
 from unittest.mock import patch,MagicMock
 from fastapi import HTTPException
-from cases_api import case_payload,interpret,evaluate_with_yandex,PRIVATE_DATA
+from cases_api import case_payload,interpret,evaluate_with_yandex,PRIVATE_DATA,public_case
+from question_quality import quality_issues
 
 CASE=dict(
     title="Помочь выбрать",competency="Забота о госте",
@@ -11,6 +12,24 @@ CASE=dict(
     ])
 
 class Cases(unittest.TestCase):
+    def test_public_cases_hide_rubrics(self):
+        row=dict(id=5,title="Паста",scenario="Гость просит пасту.",source="ServiceBook",published=True,
+                 competency="Проактивная забота",action="Уточняет предпочтения",
+                 criteria=["Уточняет пожелания","Проверяет изменения с кухней"],archived=False)
+        shown=public_case(row)
+        self.assertNotIn("criteria",shown)
+        self.assertNotIn("competency",shown)
+        self.assertNotIn("action",shown)
+        self.assertEqual(public_case(row,True)["criteria"],row["criteria"])
+    def test_question_quality_flags(self):
+        questions=[
+         {"question":"Какой компонент прямо указан в станционке ▤?","options":["Замес краба","Бриошь","Шпинат"],"source":"MOJO"},
+         {"question":"Что ты спросишь гостя перед рекомендацией?","options":["Предпочтения гостя","Список аллергенов","Согласование с кухней"],"source":"MOJO"}
+        ]
+        issues=quality_issues(questions)
+        self.assertTrue(any(w["question"]==1 and "Повреждённые" in w["message"] for w in issues))
+        self.assertFalse(any(w["question"]==2 for w in issues))
+
     def test_validation(self):
         self.assertEqual(case_payload(CASE)["criteria"][0],"Задать несколько вопросов")
         with self.assertRaises(HTTPException):
