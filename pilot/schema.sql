@@ -103,3 +103,14 @@ CREATE TABLE IF NOT EXISTS dish_cards (
  UNIQUE(restaurant,source_hash,source_page,source_slot)
 );
 CREATE INDEX IF NOT EXISTS dish_cards_visible ON dish_cards(restaurant,published,archived);
+
+
+-- Manager-selected published dish cards form clean chapters inside existing courses.
+-- Existing quizzes and attempts stay linked to their original course ID.
+CREATE TABLE IF NOT EXISTS course_dishes (
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ dish_id BIGINT NOT NULL REFERENCES dish_cards(id),
+ position INT NOT NULL CHECK(position >= 0),
+ PRIMARY KEY(course_id,dish_id),
+ UNIQUE(course_id,position)
+);
