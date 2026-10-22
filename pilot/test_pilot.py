@@ -67,6 +67,84 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_service_manager_uploads_pdf_as_editable_draft_and_adds_test(self):
+        import fitz
+        from course_pdf import course_chapters_from_pdf
+        document = fitz.open()
+        for title,body in [
+            ('WOW - Involvement', 'Notice guest expectations and offer practical help.'),
+            ('SMILE - Sincerity', 'Ask what matters to guests, listen before recommending.'),
+        ]:
+            page = document.new_page()
+            page.insert_text((45,80),title,fontsize=22)
+            page.insert_text((45,125),body,fontsize=13)
+        raw = document.tobytes()
+        chapters = course_chapters_from_pdf(raw, 'MOJO_ServiceBook.pdf')
+        self.assertEqual(len(chapters),2)
+        self.assertIn('Sincerity',chapters[1]['body'])
+        m = self.auth(999)
+        trainee = self.auth(101)
+        link = '/api/learning/import-pdf?' + urlencode({
+            'title':'MOJO Service philosophy', 'filename':'MOJO_ServiceBook.pdf'
+        })
+        denial = self.client.post(link,content=raw,headers={
+            **trainee,'Content-Type':'application/pdf'
+        })
+        self.assertEqual(denial.status_code,403,denial.text)
+        wrong = self.client.post(link,content=raw,headers={
+            **m,'Content-Type':'application/octet-stream'
+        })
+        self.assertEqual(wrong.status_code,415,wrong.text)
+        imported = self.client.post(link,content=raw,headers={
+            **m,'Content-Type':'application/pdf'
+        })
+        self.assertEqual(imported.status_code,200,imported.text)
+        result = imported.json()
+        self.assertFalse(result['duplicate'])
+        self.assertEqual(result['chapters'],2)
+        cid = result['id']
+        existing = self.client.post(link,content=raw,headers={
+            **m,'Content-Type':'application/pdf'
+        })
+        self.assertTrue(existing.json()['duplicate'])
+        self.assertEqual(existing.json()['id'],cid)
+        row = next(c for c in self.client.get('/api/courses',headers=m).json() if c['id']==cid)
+        self.assertFalse(row['published'])
+        self.assertEqual(row['questions'],[])
+        self.assertEqual(row['kind'],'service')
+        readback = self.client.get(f'/api/learning/{cid}/text-chapters',headers=m)
+        self.assertEqual(readback.status_code,200,readback.text)
+        self.assertEqual(len(readback.json()['chapters']),2)
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',headers=m,
+            json={'reviewed':True}).status_code,409)
+        self.assertEqual(self.client.get(f'/api/learning/{cid}',headers=trainee).status_code,404)
+        q = dict(type='multiple',question='Which actions demonstrate care?',
+                 options=['Listen','Ask','Ignore','Rush'],correct=[0,1],
+                 explanation='Choose respectful and attentive actions.',
+                 source='MOJO ServiceBook')
+        update = {k:row[k] for k in ('title','kind','body','source','pass_score')}
+        update['questions']=[q]
+        edited = self.client.put(f'/api/courses/{cid}',headers=m,json=update)
+        self.assertEqual(edited.status_code,200,edited.text)
+        published = self.client.post(f'/api/courses/{cid}/publish',headers=m,json={'reviewed':True})
+        self.assertEqual(published.status_code,200,published.text)
+        details = self.client.get(f'/api/learning/{cid}',headers=trainee)
+        self.assertEqual(details.status_code,200,details.text)
+        self.assertEqual(len(details.json()['chapters']),2)
+        self.assertEqual(details.json()['questions'][0]['type'],'multiple')
+
+    def test_pdf_scans_and_long_documents_fail_safely(self):
+        import fitz
+        from course_pdf import course_chapters_from_pdf
+        blank=fitz.open()
+        blank.new_page()
+        with self.assertRaisesRegex(ValueError, 'текст'):
+            course_chapters_from_pdf(blank.tobytes(),'blank.pdf')
+        for _ in range(55):
+            blank.new_page()
+        with self.assertRaisesRegex(ValueError, '55 страниц'):
+            course_chapters_from_pdf(blank.tobytes(),'too-long.pdf')
+
     def test_archive_old_quiz_preserves_all_results(self):
         m=self.auth(999);s=self.auth(101)
         payload=dict(title='Legacy service',kind='service',body='Source learning',

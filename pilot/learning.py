@@ -5,6 +5,8 @@ import re
 import uuid
 from questions import public_question, check
 from dish_lessons import dish_chapters, map_details, save_mapping
+from course_pdf import course_chapters_from_pdf, MAX_PDF_BYTES
+from dishes import limited_body
 from quiz_cards import approved_card_questions
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
@@ -96,6 +98,50 @@ def make_learning_router(db, require, manager, scope, grade, audit):
     def progress(c, uid, cid):
         row = c.execute('SELECT chapter_ids FROM learning_progress WHERE staff_id=%s AND course_id=%s', (uid, cid)).fetchone()
         return row['chapter_ids'] if row else []
+
+    @router.post('/import-pdf')
+    async def import_theory_pdf(request: Request):
+        """PDF -> manager-owned unpublished service course + editable text chapters."""
+        # Authenticate before reading an untrusted document into memory.
+        with db() as c:
+            u = require(c, request)
+            manager(u)
+        title = (request.query_params.get('title') or '').strip()
+        filename = (request.query_params.get('filename') or 'Материал.pdf').split('/')[-1].split('\\')[-1]
+        if not 3 <= len(title) <= 180 or not 1 <= len(filename) <= 160:
+            raise HTTPException(422, 'Укажи название курса и корректное имя PDF')
+        if not request.headers.get('content-type', '').startswith('application/pdf'):
+            raise HTTPException(415, 'Выбери PDF-документ')
+        raw = await limited_body(request, MAX_PDF_BYTES)
+        try:
+            outline = await run_in_threadpool(course_chapters_from_pdf, raw, filename)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(422, str(exc))
+        outline = validate_text_chapters(outline)
+        digest = hashlib.sha256(raw).hexdigest()[:16]
+        source = f'PDF: {filename}; SHA256={digest}'
+        description = ('Материал загружен из PDF. Учебный текст находится в главах. '
+                       'Проверь все главы и добавь вопросы перед публикацией.')
+        with db() as c:
+            u = require(c, request)
+            manager(u)
+            c.execute('SELECT pg_advisory_xact_lock(823411)')
+            duplicate = c.execute("""SELECT id FROM courses
+                   WHERE restaurant=%s AND title=%s AND source=%s AND NOT archived LIMIT 1""",
+                   (u['restaurant'], title, source)).fetchone()
+            if duplicate:
+                return {'id': duplicate['id'], 'chapters': len(outline),
+                        'status': 'draft', 'duplicate': True}
+            item = c.execute("""INSERT INTO courses
+                  (author,restaurant,title,kind,body,source,questions,pass_score,published)
+                  VALUES (%s,%s,%s,'service',%s,%s,%s,80,false) RETURNING id""",
+                  (u['id'],u['restaurant'],title,description,source,Jsonb([]))).fetchone()
+            cid = item['id']
+            c.execute("INSERT INTO course_text_outline(course_id,chapters) VALUES(%s,%s)",
+                      (cid,Jsonb(outline)))
+            audit(c, u['id'], 'course:pdf-draft', cid)
+        return {'id': cid, 'chapters': len(outline),
+                'status': 'draft', 'duplicate': False}
 
     @router.get('')
     def catalog(request: Request):
