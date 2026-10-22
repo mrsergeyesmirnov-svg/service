@@ -98,7 +98,7 @@ function showStudyResult(r){
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save'].includes(action))return;
+ if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='course-map')await editCourseDishMap(Number(id));
@@ -116,6 +116,18 @@ document.addEventListener('click',async e=>{
     if(idx>=0&&other>=0&&other<courseMapSelected.length)
      [courseMapSelected[idx],courseMapSelected[other]]=[courseMapSelected[other],courseMapSelected[idx]];
     renderCourseMap();
+  }
+  if(action==='course-map-suggest'){
+    const r=courseMapSource.match(/(?:с[тр]?\.?|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+    if(r){
+      const first=Number(r[1]),last=Number(r[2]);
+      const proposed=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last)
+       .sort((a,b)=>a.source_page-b.source_page||a.id-b.id).map(c=>c.id);
+      if(proposed.length&&confirm('Добавить '+proposed.length+' карточек по страницам '+first+'–'+last+'? Проверь порядок и каждое блюдо до сохранения.')){
+        courseMapSelected=[...new Set([...courseMapSelected,...proposed])].slice(0,80);
+        renderCourseMap();
+      }
+    }
   }
   if(action==='course-map-save')await saveCourseDishMap();
   if(action==='study')await study(Number(id));
@@ -140,18 +152,18 @@ function filterCourses(id){$('#course-list').innerHTML=learningCourses.filter(c=
 
 // Managers curate the chapter sequence from reviewed dish cards.
 // This does not change a course's questions or previous exam attempts.
-let courseMapId=null,courseMapTitle='',courseMapSelected=[],courseMapAvailable=[],courseMapSearch='';
+let courseMapId=null,courseMapTitle='',courseMapSource='',courseMapSelected=[],courseMapAvailable=[],courseMapSearch='';
 async function editCourseDishMap(id){
  if(!isManager())throw Error('Доступ только менеджеру');
  const [mapping,cards]=await Promise.all([api('learning/'+id+'/dish-map'),api('dishes')]);
- courseMapId=id;courseMapTitle=mapping.title;
+ courseMapId=id;courseMapTitle=mapping.title;courseMapSource=mapping.source||'';
  courseMapSelected=[...mapping.dish_ids];courseMapAvailable=cards.filter(c=>c.published);
  courseMapSearch='';
  $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
  '<h1>Главы курса</h1><p class="muted">'+esc(courseMapTitle)+'</p>'+
- '<div class="card"><p>Выбери опубликованные карточки блюд и установи порядок. Сотрудник будет читать их вместо сырого текста станционок, после чего сможет пройти существующий тест.</p>'+
+ '<div class="card"><p>Выбери опубликованные карточки блюд и установи порядок. Сотрудник будет читать их вместо сырого текста станционок, после чего сможет пройти существующий тест.</p>'+ 
  '<p class="muted">При изменении рецептуры карточка снова станет черновиком и исчезнет из учебного курса до повторной проверки.</p></div>'+
- '<h2>Порядок глав</h2><div id="course-map-picked"></div>'+
+ '<div id="course-map-suggest"></div><h2>Порядок глав</h2><div id="course-map-picked"></div>'+ 
  '<h2>Добавить из каталога</h2><label>Поиск по названию и разделу'+
  '<input type="search" id="course-map-search" placeholder="Например: роллы, песто, салат"></label>'+
  '<div id="course-map-available"></div>'+
@@ -161,6 +173,15 @@ async function editCourseDishMap(id){
 }
 function renderCourseMap(){
  if(courseMapId===null)return;
+ const range=courseMapSource.match(/(?:с[тр]?\.?|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+ if(range){
+  const first=Number(range[1]),last=Number(range[2]);
+  const available=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last);
+  $('#course-map-suggest').innerHTML=available.length?
+   '<div class="card"><p>Источник: '+esc(courseMapSource)+'</p>'+
+   '<p>На страницах '+first+'–'+last+' найдено '+available.length+' опубликованных карточек.</p>'+
+   btn('Подобрать по страницам (проверить вручную)','course-map-suggest','','secondary')+'</div>':'';
+ } else $('#course-map-suggest').innerHTML='';
  const byId=new Map(courseMapAvailable.map(c=>[c.id,c]));
  const chosen=courseMapSelected.map((id,index)=>{
   const c=byId.get(id),caption=c?esc(c.title):'Карточка №'+id+' (сейчас не опубликована)';
