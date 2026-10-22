@@ -64,5 +64,18 @@ CREATE TABLE IF NOT EXISTS case_attempts (
  UNIQUE(case_id,staff_id,request_id)
 );
 CREATE INDEX IF NOT EXISTS case_attempts_staff ON case_attempts(staff_id,created_at);
+
+-- Independent study never changes mandatory assignments or admission.
+CREATE TABLE IF NOT EXISTS learning_progress (
+ staff_id BIGINT NOT NULL REFERENCES staff(id), course_id BIGINT NOT NULL REFERENCES courses(id),
+ chapter_ids JSONB NOT NULL DEFAULT '[]', updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(staff_id,course_id)
+);
+CREATE TABLE IF NOT EXISTS learning_attempts (
+ id BIGSERIAL PRIMARY KEY, staff_id BIGINT NOT NULL REFERENCES staff(id),
+ course_id BIGINT NOT NULL REFERENCES courses(id), request_id UUID NOT NULL,
+ answers JSONB NOT NULL, score INT NOT NULL, passed BOOLEAN NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(staff_id,course_id,request_id)
+);
 -- Published scenarios can be retired without deleting employee attempt history.
 ALTER TABLE case_scenarios ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
