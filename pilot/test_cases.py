@@ -30,6 +30,20 @@ class Cases(unittest.TestCase):
         self.assertTrue(any(w["question"]==1 and "Повреждённые" in w["message"] for w in issues))
         self.assertFalse(any(w["question"]==2 for w in issues))
 
+    def test_voice_normalization_rejects_unknown_media(self):
+        from voice import normalize_audio
+        with self.assertRaises(HTTPException) as exc:
+            normalize_audio(b"x"*1500,"text/plain")
+        self.assertEqual(exc.exception.status_code,422)
+        sample=b"\x00\x00\x00\x18ftyp"+b"x"*1300
+        from unittest.mock import MagicMock
+        converted=MagicMock(returncode=0,stdout=b"OggS"+b"0"*400)
+        with patch("voice.subprocess.run",return_value=converted) as ffmpeg:
+            result=normalize_audio(sample,"audio/mp4")
+        self.assertTrue(result.startswith(b"OggS"))
+        self.assertIn("-c:a",ffmpeg.call_args.args[0])
+        self.assertIn("libopus",ffmpeg.call_args.args[0])
+
     def test_validation(self):
         self.assertEqual(case_payload(CASE)["criteria"][0],"Задать несколько вопросов")
         with self.assertRaises(HTTPException):
