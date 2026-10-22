@@ -42,18 +42,11 @@ def validate_init(raw, token, now=None):
     if type(u.get('id')) is not int or u['id'] <= 0: raise ValueError('invalid user')
     return u
 
-def effective_member(member):
-    # Existing owners may already be enrolled as trainee/waiter. Telegram ID in
-    # OWNER_TELEGRAM_ID is trusted server configuration, not a client choice.
-    if member and OWNER and member['id'] == OWNER and member['role'] != 'manager':
-        return dict(member, role='manager')
-    return member
-
 def require(c, request):
     token = request.headers.get('authorization', '').removeprefix('Bearer ')
     u = c.execute('SELECT s.* FROM sessions t JOIN staff s ON s.id=t.staff_id WHERE t.token_hash=%s AND t.expires_at>now() AND s.active', (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
     if not u: raise HTTPException(401, 'Откройте приложение заново из Telegram')
-    return effective_member(u)
+    return u
 
 def manager(u):
     if u['role'] not in ('manager','local'): raise HTTPException(403, 'Доступ только руководителю')
@@ -118,7 +111,7 @@ async def login(request:Request):
         session=secrets.token_urlsafe(32)
         c.execute('DELETE FROM sessions WHERE expires_at<now()')
         c.execute("INSERT INTO sessions VALUES(%s,%s,now()+interval '8 hours')",(hashlib.sha256(session.encode()).hexdigest(),u['id']))
-    return {'token':session,'user':effective_member(member)}
+    return {'token':session,'user':member}
 
 @app.get('/api/me')
 def me(request:Request):
