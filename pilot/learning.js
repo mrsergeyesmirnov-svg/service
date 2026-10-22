@@ -30,9 +30,53 @@ async function study(id){
  showChapter();
 }
 function studyHeader(sub){return `<div class="lesson-top">${btn('←','nav','catalog','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
+function legacyText(text){
+ // Display only: original course source remains immutable in PostgreSQL.
+ return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
+}
+function chapterBody(p){
+ if(p.kind!=='dish')
+  return '<p class="muted">Материал исходного курса. Менеджер может заменить его проверенными карточками блюд.</p>'+
+   '<div class="body lesson-source">'+esc(legacyText(p.body))+'</div>';
+ return (p.has_photo?dishPhoto(p.dish_id,'wide'):'<div class="dish-photo wide"><span>Фотография готовится</span></div>')+
+ '<p class="eyebrow">'+esc(p.section)+'</p><h2>Состав блюда</h2>'+
+ (p.ingredients?.length?'<ul class="chapter-ingredients">'+p.ingredients.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':
+  '<p class="muted">Ингредиенты проверяются менеджером.</p>')+
+ '<h2>Особенности и подача</h2><div class="body lesson-source">'+esc(p.description||'Описание блюда готовится.')+'</div>'+
+ '<p class="muted">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>'+
+ '<section class="lesson-practice"><strong>Проверь себя</strong>'+
+ '<p>Сможешь без подсказок назвать основные ингредиенты и объяснить это блюдо гостю за 20–30 секунд?</p>'+
+ '<p class="muted">Затем переходи к следующей главе. Итоговый тест проверит знания без подсказок.</p></section>';
+}
 function showChapter(){
- const c=activeCourse,p=c.chapters[chapterIndex],all=c.chapters.every(p=>c.read.includes(p.id));
- $('#app').innerHTML=studyHeader(`Глава ${chapterIndex+1} из ${c.chapters.length}`)+`<progress max="${c.chapters.length}" value="${c.read.length}"></progress><article class="card chapter"><span class="badge">${c.read.includes(p.id)?'Прочитано':'Учебный материал'}</span><h1>${esc(p.title)}</h1><div class="body">${esc(p.body)}</div></article><div class="actions">${chapterIndex?btn('← Назад','chapter-prev','','secondary'):''}${btn(c.read.includes(p.id)?'Далее →':'Прочитано, далее →','chapter-next')}</div><p class="muted">Источник: ${esc(c.source)}</p>${all&&c.questions.length?btn('Закрепить знания: тест →','study-quiz'):''}<section class="card"><h2>Мои результаты</h2>${c.history.length?c.history.map(t=>`<p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))} · ${t.score}% · ${t.passed?'Сдано':'Повторить материал'}</p>`).join(''):'<p class="muted">Тест ещё не пройден.</p>'}</section>${isManager()?btn('Результаты команды','study-results',c.id,'secondary'):''}`;
+ const c=activeCourse;
+ if(!c.chapters.length){
+  $('#app').innerHTML=studyHeader('Материалы на проверке')+
+    '<section class="card"><h1>Уроки временно недоступны</h1>'+
+    '<p>Менеджер проверяет или обновляет карточки блюд. Результаты предыдущих тестов сохранены.</p>'+
+    btn('К каталогу','nav','catalog','secondary')+'</section>';
+  return;
+ }
+ chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
+ const p=c.chapters[chapterIndex],finished=c.chapters.every(p=>c.read.includes(p.id));
+ const read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
+ '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
+ '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Учебный материал')+'</span>'+
+ '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
+ '<div class="actions chapter-actions">'+
+ (chapterIndex?btn('← Предыдущая','chapter-prev','','secondary'):'')+
+ btn(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →','chapter-next','', 'lime-action')+'</div>'+
+ (p.kind==='dish'?'':'<p class="muted">Источник: '+esc(c.source)+'</p>')+
+ (finished&&c.questions.length?'<div class="card"><h2>Готов к проверке знаний?</h2>'+
+ '<p>Ты изучил все главы. Теперь закрепи материал тестом.</p>'+
+ btn('Пройти тест →','study-quiz')+'</div>':'')+
+ '<section class="card"><h2>Мои результаты</h2>'+
+ (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
+ ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
+ '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+
+ (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
+ if(p.kind==='dish')showDishPhotos();
  window.scrollTo(0,0);
 }
 function showStudyQuiz(){
