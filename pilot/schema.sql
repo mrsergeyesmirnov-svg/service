@@ -114,3 +114,20 @@ CREATE TABLE IF NOT EXISTS course_dishes (
  PRIMARY KEY(course_id,dish_id),
  UNIQUE(course_id,position)
 );
+
+
+-- Advisory AI practice is not an exam and does not affect course pass status.
+CREATE TABLE IF NOT EXISTS dish_practice_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ dish_id BIGINT NOT NULL REFERENCES dish_cards(id),
+ request_id UUID NOT NULL,
+ answer TEXT NOT NULL,
+ feedback JSONB,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','failed')),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(staff_id,course_id,dish_id,request_id)
+);
+CREATE INDEX IF NOT EXISTS dish_practice_daily ON dish_practice_attempts(staff_id,created_at);
