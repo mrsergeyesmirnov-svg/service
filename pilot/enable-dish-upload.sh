@@ -8,12 +8,16 @@ python3 - "$CFG" <<'PY'
 from pathlib import Path
 import sys
 p=Path(sys.argv[1]);data=p.read_text()
-if '@dishupload path ' in data:
- print('Dish-upload route already exists');sys.exit(0)
-marker=' @pilot path /pilot/* /api/*\n'
-if data.count(marker)!=1:
- sys.exit('Unexpected Caddy configuration; no changes applied')
-route=''' @dishupload path /api/dishes/import /api/dishes/*/photo
+matcher=' @dishupload path /api/dishes/import /api/dishes/*/photo'
+updated=matcher+' /api/learning/import-pdf'
+if updated in data:
+ print('PDF upload routes already enabled')
+elif matcher in data:
+ p.write_text(data.replace(matcher,updated))
+else:
+ marker=' @pilot path /pilot/* /api/*\n'
+ if data.count(marker)!=1: sys.exit('Unexpected Caddy config; no changes made')
+ route=''' @dishupload path /api/dishes/import /api/dishes/*/photo /api/learning/import-pdf
  handle @dishupload {
   request_body {
    max_size 20MB
@@ -21,7 +25,7 @@ route=''' @dishupload path /api/dishes/import /api/dishes/*/photo
   reverse_proxy service-academy-api:8000
  }
 '''
-p.write_text(data.replace(marker,route+marker))
+ p.write_text(data.replace(marker,route+marker))
 PY
 if ! docker exec service-academy-web caddy validate --config /etc/caddy/Caddyfile; then
  cp -p "$CFG.before-dishes" "$CFG"
