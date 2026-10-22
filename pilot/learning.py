@@ -2,13 +2,14 @@
 import hashlib
 import re
 import uuid
+from questions import public_question, check
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
 
 
 def chapters(body):
     """Preserve source text verbatim; use existing numbered headings, never infer facts."""
-    blocks = re.split(r'\n(?=\d+[.)]\s|ПРАКТИКА:|ИСТОЧНИК:)', body.strip())
+    blocks = re.split(r'\n(?=\d+[.)]\s|=== |ПРАКТИКА:|ИСТОЧНИК:)' , body.strip())
     result = []
     for block in blocks:
         # Long legacy documents remain readable in bounded pieces without dropping text.
@@ -63,7 +64,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             u = require(c, request); r = course(c, u, cid)
             return dict(id=r['id'], title=r['title'], source=r['source'], pass_score=r['pass_score'],
                         chapters=chapters(r['body']), read=progress(c, u['id'], cid),
-                        questions=[{'question':q['question'], 'options':q['options']} for q in r['questions']],
+                        questions=[public_question(q) for q in r['questions']],
                         history=c.execute('SELECT id,score,passed,created_at FROM learning_attempts WHERE staff_id=%s AND course_id=%s ORDER BY id DESC', (u['id'], cid)).fetchall())
 
     @router.post('/{cid}/read')
@@ -95,7 +96,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                 (u['id'], cid, rid, Jsonb(d['answers']), score, score >= r['pass_score'])).fetchone()
             if row: audit(c, u['id'], 'learning:submit', row['id'])
             else: row = c.execute('SELECT * FROM learning_attempts WHERE staff_id=%s AND course_id=%s AND request_id=%s', (u['id'], cid, rid)).fetchone()
-            return {'score': row['score'], 'passed': row['passed'], 'review': [dict(q, answer=a) for q,a in zip(r['questions'], row['answers'])]}
+            return {'score': row['score'], 'passed': row['passed'], 'review': [dict(q, answer=a, assessment=check(q,a)) for q,a in zip(r['questions'], row['answers'])]}
 
     @router.get('/{cid}/results')
     def results(cid: int, request: Request):
