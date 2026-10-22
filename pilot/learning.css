@@ -58,3 +58,10 @@ nav button.nav-item{flex:1;min-width:0}
 .map-sticky{position:sticky;bottom:calc(86px + env(safe-area-inset-bottom));z-index:3;background:var(--canvas);padding:14px 0;border-top:1px solid var(--border);margin-top:18px}
 .map-sticky button{width:100%;background:var(--forest);color:white}
 @media(max-width:410px){.chapter-ingredients{grid-template-columns:1fr}.map-row{align-items:flex-start}.map-row button{font-size:12px}}
+
+.lesson-ai{background:white;border:1px solid var(--border);border-radius:19px;margin:18px 0;padding:22px}
+.lesson-ai textarea{width:100%;min-height:130px;resize:vertical;line-height:1.6;font-size:16px}
+.lesson-ai>button{background:var(--lime);color:var(--forest);width:100%;margin-top:12px}
+.lesson-ai .result-card{margin:18px 0 0}
+.lesson-ai .result-card h3{color:var(--forest);margin:16px 0 6px}
+.lesson-ai #dish-practice-state{font-size:14px;color:#617469}
