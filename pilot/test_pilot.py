@@ -57,6 +57,67 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_curated_dish_lessons_preserve_courses_and_scope(self):
+        from PIL import Image
+        from io import BytesIO
+        m=self.auth(999);s=self.auth(101);local=self.auth(103)
+        q=[dict(question='Which presentation is right?',options=['Correct','Wrong'],
+                correct=0,explanation='Approved recipe',source='Manager')]
+        payload=dict(title='KITCHEN 02',kind='ttk',body='Legacy big PDF text',
+                     source='Synthetic PDF',questions=q,pass_score=80)
+        cid=self.client.post('/api/courses',json=payload,headers=m).json()['id']
+        self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m)
+        create=self.client.post('/api/dishes',json={
+            'title':'MOJO avocado roll','section':'Cold rolls',
+            'ingredients':['Avocado','Rice'],'description':'Only synthetic test ingredients'
+        },headers=m)
+        self.assertEqual(create.status_code,200,create.text)
+        did=create.json()['id']
+        photo=BytesIO()
+        Image.new('RGB',(200,120)).save(photo,'JPEG')
+        self.assertEqual(self.client.put(f'/api/dishes/{did}/photo',content=photo.getvalue(),headers=m).status_code,200)
+        published=self.client.post(f'/api/dishes/{did}/publish',json={'reviewed':True},headers=m)
+        self.assertEqual(published.status_code,200,published.text)
+        map_url=f'/api/learning/{cid}/dish-map'
+        self.assertEqual(self.client.get(map_url,headers=s).status_code,403)
+        self.assertEqual(self.client.put(map_url,json={'dish_ids':[did]},headers=s).status_code,403)
+        self.assertEqual(self.client.put(map_url,json={'dish_ids':[did]},headers=local).status_code,403)
+        added=self.client.put(map_url,json={'dish_ids':[did]},headers=m)
+        self.assertEqual(added.status_code,200,added.text)
+        self.assertEqual(added.json()['dish_ids'],[did])
+        detail=self.client.get(f'/api/learning/{cid}',headers=s).json()
+        self.assertEqual(len(detail['chapters']),1)
+        chapter=detail['chapters'][0]
+        self.assertEqual(chapter['title'],'MOJO avocado roll')
+        self.assertEqual(chapter['kind'],'dish')
+        self.assertNotIn('Legacy big PDF',str(chapter))
+        self.assertNotIn('correct',detail['questions'][0])
+        self.assertTrue(chapter['has_photo'])
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',json={
+            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
+        marked=self.client.post(f'/api/learning/{cid}/read',json={'chapter_id':chapter['id']},headers=s)
+        self.assertEqual(marked.status_code,200,marked.text)
+        attempt=self.client.post(f'/api/learning/{cid}/submit',json={
+            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s)
+        self.assertEqual(attempt.status_code,200,attempt.text)
+        self.assertEqual(attempt.json()['score'],100)
+        # Changing a published recipe invalidates the current lesson until re-approved.
+        updated=self.client.put(f'/api/dishes/{did}',json={
+            'title':'MOJO avocado roll','section':'Cold rolls',
+            'ingredients':['Avocado','Rice'],'description':'Updated by the manager'
+        },headers=m)
+        self.assertEqual(updated.status_code,200,updated.text)
+        missing=self.client.get(f'/api/learning/{cid}',headers=s).json()
+        self.assertEqual(missing['chapters'],[])
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',json={
+            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
+        self.client.post(f'/api/dishes/{did}/publish',json={'reviewed':True},headers=m)
+        fresh=self.client.get(f'/api/learning/{cid}',headers=s).json()
+        self.assertNotEqual(chapter['id'],fresh['chapters'][0]['id'])
+        self.assertEqual(len(fresh['history']),1)
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/read',
+            json={'chapter_id':chapter['id']},headers=s).status_code,422)
+
     def test_self_study_persistence_and_scope(self):
         m=self.auth(999); s=self.auth(101); other=self.auth(102); local=self.auth(103)
         payload=dict(title='Learning test',kind='service',body='Introduction\n1. Chapter. Read this.',source='Synthetic source',pass_score=80,questions=[dict(question='Choose',options=['Correct','Wrong'],correct=0,explanation='Explanation',source='Chapter 1')])
