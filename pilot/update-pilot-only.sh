@@ -15,7 +15,11 @@ OLD_IMAGE="$(docker inspect --format '{{.Image}}' service-academy-api)"
 RELEASE="service-academy-pilot:update-$(date -u +%Y%m%dT%H%M%SZ)"
 docker build -t "$RELEASE" -f pilot/Dockerfile .
 docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot
-echo "Backup and tests OK. Replacing Academy API only."
+# Additive Academy-only schema change. Apply after backup, before switching the API.
+# No rows or historical scores are deleted.
+docker exec service-academy-db psql -U academy -d academy -v ON_ERROR_STOP=1 \
+  -c "ALTER TABLE courses ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;"
+echo "Backup, tests and Academy course migration OK. Replacing Academy API only."
 docker rm -f service-academy-api
 run_api() {
  docker run -d --name service-academy-api --restart unless-stopped \
