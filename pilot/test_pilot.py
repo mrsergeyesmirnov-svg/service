@@ -40,6 +40,18 @@ class Core(unittest.TestCase):
         for name in ['WOW — ценности MOJO','SMILE — философия гостеприимства','ВАУ — атмосфера']:
             self.assertEqual(category(name),'service')
 
+    def test_pilot_readiness_gate(self):
+        from pilot_readiness import evaluate
+        good={'telegram_configured':True,'managers':1,'wow':1,'smile':1,
+              'mapped_menu':1,'cases':3,'weak_quizzes':0,'ai_configured':True}
+        self.assertTrue(all(ok for _,ok in evaluate(good)))
+        good['weak_quizzes']=2
+        self.assertFalse(all(ok for _,ok in evaluate(good)))
+        self.assertTrue(any(not ok and 'тест' in name for name,ok in evaluate(good)))
+        good['weak_quizzes']=0
+        good['wow']=0
+        self.assertFalse(all(ok for _,ok in evaluate(good)))
+
     def test_multiple_and_ingredient_recall(self):
         from questions import check,public_question
         multi={'type':'multiple','question':'Select','options':['A','B','C'],'correct':[0,2]}
