@@ -33,7 +33,7 @@ const navSvg=(name)=>{
 };
 function nav(){
  const tabs=isManager()?[['home','Мой путь'],['team','Команда'],['catalog','Курсы'],['cases','Практика'],['profile','Профиль']]:[['home','Мой путь'],['catalog','Курсы'],['assignments','Задания'],['cases','Практика'],['profile','Профиль']];
- $('#nav').innerHTML=tabs.map(([id,label])=>'<button class="nav-item '+(view===id?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(view===id?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>').join('');
+ $('#nav').innerHTML=tabs.map(([id,label])=>'<button class="nav-item '+((view===id||view==='dishes'&&id==='catalog')?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(view===id?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>').join('');
 }
 const done=a=>a.questions?a.passed:!!a.acknowledged_at;
 const dateLabel=s=>new Date(s+'T12:00:00').toLocaleDateString('ru-RU');
@@ -41,6 +41,7 @@ function overview(items){const n=items.filter(done).length,p=items.length?Math.r
 const status=a=>a.questions?(a.passed?'Тест сдан':a.attempts?'Нужна пересдача':a.acknowledged_at?'Можно сдавать тест':'Не начато'):(a.acknowledged_at?'Ознакомлен':'Не начато');
 async function render(){nav();const root=$('#app');
 if(view==='home'||view==='catalog'){await learningPage(view);return}
+if(view==='dishes'){await dishesPage();return}
 if(view==='cases'){await casesPage();return}
 if(view==='profile'){root.innerHTML=`<h1>${esc(user.name)}</h1><div class="card"><p>${esc(roles[user.role])} · ${esc(user.restaurant)}</p><p>Телефон: ${esc(user.phone||'не указан')}</p><p>Чтобы добавить номер, отправьте боту /phone.</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`;return}
 if(view==='assignments'){cache=await api('assignments');root.innerHTML=`<h1>${isManager()?'Прохождение обучения':'Мои задания'}</h1>`+overview(cache)+(cache.length?cache.map(a=>`<article class="card"><span class="badge">${esc(status(a))}</span><h2>${esc(a.title)}</h2>${isManager()?`<p>${esc(a.name)}</p>`:''}<p class="muted">До ${esc(dateLabel(a.deadline))} · попыток ${a.attempts}/${a.max_attempts}${a.best_score!==null?' · лучший результат '+a.best_score+'%':''}</p>${isManager()?`<p class="muted">Уведомление в Telegram: ${esc(({sent:'отправлено',pending:'в очереди',failed:'не доставлено — проверьте, открыт ли чат с ботом'})[a.notification]||'нет')}</p>${btn('Посмотреть ответы','results',a.id)}${a.staff_id===user.id?btn('Пройти самому','lesson',a.id,'secondary'):''}`:btn('Открыть','lesson',a.id)}</article>`).join(''):'<div class="card">Пока нет назначенных материалов.</div>');return}
