@@ -6,8 +6,8 @@ body{background:#f6f6f1}header{padding-top:28px;align-items:center}header strong
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 
 
-/* Case-first MOJO experience: brand design without fictional demo data. */
-:root{--paper:#fff;--canvas:#f6f6f0;--forest:#223d32;--forest-soft:#365747;--lime:#d6ed87;--border:#e0e7db;--text-sub:#78857b}
+/* Reading and practice share the same mobile layout. */
+:root{--paper:#fff;--canvas:#F8FAF6;--forest:#233F34;--forest-soft:#365747;--lime:#D5ED89;--border:#E6EDE8;--text-sub:#65746c;--ink:#233F34;--line:#E6EDE8}
 body{background:var(--canvas);font-size:15px;line-height:1.54;-webkit-font-smoothing:antialiased}
 header.academy-header{display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:22px 20px 4px}
 .academy-mark{background:var(--forest);color:var(--lime);border-radius:14px;width:43px;height:43px;display:grid;place-items:center;font:italic 32px Georgia,serif;line-height:1;flex-shrink:0}
