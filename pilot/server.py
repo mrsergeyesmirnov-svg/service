@@ -304,6 +304,8 @@ def script():return FileResponse(BASE/'pilot.js',media_type='application/javascr
 def css():return FileResponse(BASE/'pilot.css',media_type='text/css')
 @app.get('/pilot/learning.js')
 def learning_script():return FileResponse(BASE/'learning.js',media_type='application/javascript')
+@app.get('/pilot/learning.css')
+def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
 
 if __name__=='__main__':
     with db() as c:c.execute((BASE/'schema.sql').read_text())
