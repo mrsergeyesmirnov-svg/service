@@ -57,6 +57,46 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_curated_text_chapters_for_coffee_with_server_progress(self):
+        m=self.auth(999);s=self.auth(101);local=self.auth(103)
+        payload=dict(title='Coffee 01',kind='service',body='RAW old coffee PDF',
+                     source='Synthetic coffee source',pass_score=80,
+                     questions=[dict(question='Check theory',options=['A','B'],
+                                     correct=0,explanation='Synthetic',source='Lesson')])
+        created=self.client.post('/api/courses',json=payload,headers=m)
+        self.assertEqual(created.status_code,200,created.text)
+        cid=created.json()['id']
+        self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m)
+        route=f'/api/learning/{cid}/text-chapters'
+        self.assertEqual(self.client.get(route,headers=s).status_code,403)
+        self.assertEqual(self.client.put(route,json={'chapters':[]},headers=local).status_code,403)
+        chapters=[dict(title='Coffee basics',body='Coffee is a prepared beverage',
+                       source='Synthetic chapter p1'),
+                  dict(title='Presentation',body='Describe the verified origin and method',
+                       source='Synthetic chapter p2')]
+        result=self.client.put(route,json={'chapters':chapters},headers=m)
+        self.assertEqual(result.status_code,200,result.text)
+        detail=self.client.get(f'/api/learning/{cid}',headers=s).json()
+        self.assertEqual(len(detail['chapters']),2)
+        self.assertTrue(all(x['kind']=='text' for x in detail['chapters']))
+        self.assertNotIn('RAW old coffee PDF',str(detail['chapters']))
+        for ch in detail['chapters']:
+            self.assertEqual(self.client.post(f'/api/learning/{cid}/read',
+                json={'chapter_id':ch['id']},headers=s).status_code,200)
+        attempt=self.client.post(f'/api/learning/{cid}/submit',json={
+            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s)
+        self.assertEqual(attempt.status_code,200,attempt.text)
+        updated=[chapters[0],dict(title='Presentation',body='Revised verified presentation',
+                                  source='Synthetic chapter p2')]
+        self.assertEqual(self.client.put(route,json={'chapters':updated},headers=m).status_code,200)
+        new=self.client.get(f'/api/learning/{cid}',headers=s).json()
+        self.assertEqual(new['chapters'][0]['id'],detail['chapters'][0]['id'])
+        self.assertNotEqual(new['chapters'][1]['id'],detail['chapters'][1]['id'])
+        self.assertEqual(len(new['history']),1)
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',json={
+            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
+        self.assertEqual(self.client.put(route,json={'chapters':[dict(title='',body='bad')]},headers=m).status_code,422)
+
     def test_curated_dish_lessons_preserve_courses_and_scope(self):
         from PIL import Image
         from io import BytesIO
