@@ -44,6 +44,37 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_self_study_persistence_and_scope(self):
+        m=self.auth(999); s=self.auth(101); other=self.auth(102); local=self.auth(103)
+        payload=dict(title='Learning test',kind='service',body='Introduction\n1. Chapter. Read this.',source='Synthetic source',pass_score=80,questions=[dict(question='Choose',options=['Correct','Wrong'],correct=0,explanation='Explanation',source='Chapter 1')])
+        cid=self.client.post('/api/courses',json=payload,headers=m).json()['id']
+        path=f'/api/learning/{cid}'
+        self.assertEqual(self.client.get(path,headers=s).status_code,404)
+        self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m)
+        self.assertEqual(self.client.get(path,headers=local).status_code,404)
+        data=self.client.get(path,headers=s).json()
+        self.assertNotIn('correct',data['questions'][0])
+        attempt={'request_id':str(uuid.uuid4()),'answers':[1]}
+        self.assertEqual(self.client.post(path+'/submit',json=attempt,headers=s).status_code,409)
+        for ch in data['chapters']:
+            self.assertEqual(self.client.post(path+'/read',json={'chapter_id':ch['id']},headers=s).status_code,200)
+        result=self.client.post(path+'/submit',json=attempt,headers=s)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()['score'],0)
+        self.assertEqual(result.json()['review'][0]['explanation'],'Explanation')
+        self.client.post(path+'/submit',json=attempt,headers=s)
+        attempt={'request_id':str(uuid.uuid4()),'answers':[0]}
+        self.assertTrue(self.client.post(path+'/submit',json=attempt,headers=s).json()['passed'])
+        fresh=self.auth(101)
+        restored=self.client.get(path,headers=fresh).json()
+        self.assertEqual(len(restored['history']),2)
+        self.assertEqual(len(restored['read']),len(data['chapters']))
+        self.assertEqual(self.client.get(path,headers=other).json()['history'],[])
+        self.assertEqual(self.client.get(path+'/results',headers=s).status_code,403)
+        self.assertEqual(self.client.get(path+'/results',headers=local).status_code,403)
+        self.assertEqual(len(self.client.get(path+'/results',headers=m).json()),2)
+        self.assertEqual(self.client.get('/api/assignments',headers=s).json(),[])
+
     def test_end_to_end(self):
         m=self.auth(999);s=self.auth(101);other=self.auth(102);local=self.auth(103)
         payload=dict(title='Test',kind='service',body='Lesson',source='Approved document p1',pass_score=80,questions=[dict(question='Choose',options=['Correct','Wrong'],correct=0,explanation='Because',source='p1')])
@@ -173,4 +204,3 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post('/api/invites',json={'role':'manager'},headers=m).status_code,422)
 
 if __name__=='__main__':unittest.main(verbosity=2)
-
