@@ -117,5 +117,38 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(self.client.delete(f"/api/dishes/{cid}",headers=self.headers(10)).status_code,200)
         self.assertEqual(self.client.get("/api/dishes",headers=self.headers(11)).json(),[])
 
+    def test_ai_practice_failure_retry_is_idempotent(self):
+        import uuid
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from psycopg.types.json import Jsonb
+        with self.connect() as c:
+            cid=c.execute("""INSERT INTO courses(author,restaurant,title,kind,body,source,
+                questions,pass_score,published)
+                VALUES (10,'MOJO','Тестовый курс','ttk','Состав','Синтетический',
+                        %s,80,true) RETURNING id""",(Jsonb([]),)).fetchone()["id"]
+            did=c.execute("""INSERT INTO dish_cards(restaurant,created_by,title,section,
+              ingredients,description,photo,published)
+              VALUES('MOJO',10,'Салат','Салаты',%s,'Подаём охлаждённым',%s,true)
+              RETURNING id""",(Jsonb(["Томаты","Сыр"]),b"test-photo")).fetchone()["id"]
+            c.execute("INSERT INTO course_dishes(course_id,dish_id,position) VALUES(%s,%s,0)",(cid,did))
+        uri=f"/api/learning/{cid}/dish-practice"
+        rid=str(uuid.uuid4())
+        payload={"dish_id":did,"request_id":rid,"answer":"Сначала уточню ограничения гостя, затем расскажу о проверенном составе блюда."}
+        feedback={"summary":"Разбор","strengths":"Верно","improvements":"Сверяй ТТК","next_step":"Повторить"}
+        with patch.dict(__import__("os").environ,{"YANDEX_API_KEY":"test-only","YANDEX_FOLDER_ID":"test-folder"}):
+            with patch("learning.evaluate_with_yandex",side_effect=[HTTPException(502,"No provider"),feedback]) as call:
+                first=self.client.post(uri,json=payload,headers=self.headers(11))
+                self.assertEqual(first.status_code,502,first.text)
+                second=self.client.post(uri,json=payload,headers=self.headers(11))
+                self.assertEqual(second.status_code,200,second.text)
+                self.assertEqual(second.json(),feedback)
+                third=self.client.post(uri,json=payload,headers=self.headers(11))
+                self.assertEqual(third.json(),feedback)
+                self.assertEqual(call.call_count,2)
+        with self.connect() as c:
+            row=c.execute("SELECT status,tries FROM dish_practice_attempts WHERE request_id=%s",(rid,)).fetchone()
+            self.assertEqual((row["status"],row["tries"]),("done",2))
+
 if __name__=="__main__":
     unittest.main()
