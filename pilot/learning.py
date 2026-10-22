@@ -72,7 +72,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
     router = APIRouter(prefix='/api/learning')
 
     def course(c, u, cid):
-        row = c.execute('SELECT * FROM courses WHERE id=%s AND published AND restaurant=%s',
+        row = c.execute('SELECT * FROM courses WHERE id=%s AND published AND NOT archived AND restaurant=%s',
                         (cid, u['restaurant'])).fetchone()
         if not row: raise HTTPException(404, 'Утверждённый курс не найден')
         return row
@@ -105,7 +105,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                 EXISTS(SELECT 1 FROM learning_attempts a WHERE a.course_id=c.id AND a.staff_id=%s AND a.passed) AS passed,
                 (SELECT max(score) FROM learning_attempts a WHERE a.course_id=c.id AND a.staff_id=%s) AS best_score
                 FROM courses c LEFT JOIN learning_progress p ON p.course_id=c.id AND p.staff_id=%s
-                WHERE c.published AND c.restaurant=%s ORDER BY c.id''', (u['id'], u['id'], u['id'], u['restaurant'])).fetchall()
+                WHERE c.published AND NOT c.archived AND c.restaurant=%s ORDER BY c.id''', (u['id'], u['id'], u['id'], u['restaurant'])).fetchall()
             result = []
             for r in rows:
                 parts = course_chapters(c, r)

@@ -67,6 +67,51 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_archive_old_quiz_preserves_all_results(self):
+        m=self.auth(999);s=self.auth(101)
+        payload=dict(title='Legacy service',kind='service',body='Source learning',
+                     source='Synthetic reference',pass_score=80,
+                     questions=[dict(question='What is expected?',type='single',
+                        options=['Observe','Ignore'],correct=0,explanation='Observe',source='Synthetic')])
+        created=self.client.post('/api/courses',json=payload,headers=m)
+        self.assertEqual(created.status_code,200,created.text)
+        cid=created.json()['id']
+        published=self.client.post(f'/api/courses/{cid}/publish',json={'reviewed':True},headers=m)
+        self.assertEqual(published.status_code,200,published.text)
+        self.assertTrue(any(x['id']==cid for x in self.client.get('/api/learning',headers=s).json()))
+        assigned=self.client.post('/api/assignments',headers=m,json={
+            'course_id':cid,'staff_ids':[101],'deadline':'2099-01-01','max_attempts':3})
+        self.assertEqual(assigned.status_code,200,assigned.text)
+        aid=assigned.json()['created'][0]
+        self.assertEqual(self.client.post(f'/api/assignments/{aid}/acknowledge',headers=s).status_code,200)
+        attempt=self.client.post(f'/api/assignments/{aid}/submit',headers=s,
+            json={'request_id':str(uuid.uuid4()),'answers':[0]})
+        self.assertEqual(attempt.status_code,200,attempt.text)
+        before=self.client.get(f'/api/assignments/{aid}/results',headers=m)
+        self.assertEqual(len(before.json()['attempts']),1)
+        archived=self.client.post(f'/api/courses/{cid}/archive',headers=m)
+        self.assertEqual(archived.status_code,200,archived.text)
+        self.assertTrue(archived.json()['results_preserved'])
+        self.assertEqual(archived.json()['assignments_affected'],1)
+        self.assertFalse(any(x['id']==cid for x in self.client.get('/api/learning',headers=s).json()))
+        self.assertEqual(self.client.get(f'/api/learning/{cid}',headers=s).status_code,404)
+        self.assertFalse(any(a['id']==aid for a in self.client.get('/api/assignments',headers=s).json()))
+        self.assertEqual(self.client.get(f'/api/assignments/{aid}',headers=s).status_code,410)
+        self.assertEqual(self.client.post(f'/api/assignments/{aid}/submit',headers=s,
+            json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,410)
+        manager_courses=self.client.get('/api/courses',headers=m).json()
+        old=next(c for c in manager_courses if c['id']==cid)
+        self.assertTrue(old['archived'])
+        self.assertFalse(old['published'])
+        manager_assignments=self.client.get('/api/assignments',headers=m).json()
+        self.assertTrue(any(x['id']==aid and x['archived'] for x in manager_assignments))
+        self.assertEqual(len(self.client.get(f'/api/assignments/{aid}/results',headers=m).json()['attempts']),1)
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',headers=m,
+            json={'reviewed':True}).status_code,409)
+        self.assertEqual(self.client.post('/api/assignments',headers=m,json={
+            'course_id':cid,'staff_ids':[102],'deadline':'2099-01-01','max_attempts':3}).status_code,422)
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/archive',headers=s).status_code,403)
+
     def test_curated_text_chapters_for_coffee_with_server_progress(self):
         m=self.auth(999);s=self.auth(101);local=self.auth(103)
         payload=dict(title='Coffee 01',kind='service',body='RAW old coffee PDF',

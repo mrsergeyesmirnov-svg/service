@@ -152,7 +152,7 @@ async def invite(request:Request):
 def courses(request:Request):
     with db() as c:
         u=require(c,request);manager(u)
-        rows=c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
+        rows=c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY archived ASC,id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
         for row in rows:
             row['quality_issues']=quality_issues(row['questions'])
         return rows
@@ -200,6 +200,7 @@ async def edit_course(cid:int,request:Request):
         row=c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
         if not row: raise HTTPException(404)
         scope(u,row['restaurant'])
+        if row['archived']: raise HTTPException(409,'Архивная версия неизменна. Создайте копию курса')
         if row['published']: raise HTTPException(409,'Опубликованная версия неизменна. Создайте копию курса')
         c.execute('UPDATE courses SET title=%s,kind=%s,body=%s,source=%s,questions=%s,pass_score=%s WHERE id=%s',(title,kind,body,source,Jsonb(qs),score,cid));audit(c,u['id'],'course:edit',cid)
     return {'ok':True}
@@ -212,8 +213,25 @@ async def publish(cid:int,request:Request):
         u=require(c,request);manager(u)
         row=c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
         if not row: raise HTTPException(404)
-        scope(u,row['restaurant']);c.execute('UPDATE courses SET published=true WHERE id=%s',(cid,));audit(c,u['id'],'course:approved',cid)
+        scope(u,row['restaurant'])
+        if row['archived']: raise HTTPException(409,'Нельзя опубликовать архивную версию. Создайте копию.')
+        c.execute('UPDATE courses SET published=true WHERE id=%s',(cid,));audit(c,u['id'],'course:approved',cid)
     return {'ok':True}
+
+@app.post('/api/courses/{cid}/archive')
+def archive_course(cid:int,request:Request):
+    """Retire an old published course and its quiz; keep all existing history."""
+    with db() as c:
+        u=require(c,request);manager(u)
+        row=c.execute('SELECT id,title,restaurant,archived FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
+        if not row:raise HTTPException(404,'Материал не найден')
+        scope(u,row['restaurant'])
+        if row['archived']:return {'archived':True,'assignments_affected':0}
+        count=c.execute('SELECT count(*) AS n FROM assignments WHERE course_id=%s',(cid,)).fetchone()['n']
+        c.execute('UPDATE courses SET archived=true,published=false WHERE id=%s',(cid,))
+        audit(c,u['id'],'course:archive',cid)
+        return {'archived':True,'assignments_affected':count,'results_preserved':True}
+
 
 @app.post('/api/assignments')
 async def assign(request:Request):
@@ -225,7 +243,7 @@ async def assign(request:Request):
     if type(attempts)!=int or not 1<=attempts<=20 or not isinstance(ids,list) or not 1<=len(ids)<=20 or any(type(x)!=int for x in ids): raise HTTPException(422,'Проверьте участников и число попыток')
     with db() as c:
         u=require(c,request);manager(u)
-        course=c.execute('SELECT * FROM courses WHERE id=%s AND published',(d.get('course_id'),)).fetchone()
+        course=c.execute('SELECT * FROM courses WHERE id=%s AND published AND NOT archived',(d.get('course_id'),)).fetchone()
         if not course: raise HTTPException(422,'Сначала опубликуйте курс')
         scope(u,course['restaurant']);result=[]
         for sid in set(ids):
@@ -244,20 +262,21 @@ async def assign(request:Request):
 def assignments(request:Request):
     with db() as c:
         u=require(c,request)
-        return c.execute('''SELECT a.*,s.name,c.title,c.kind,c.pass_score,jsonb_array_length(c.questions) AS questions,
+        return c.execute('''SELECT a.*,s.name,c.title,c.kind,c.pass_score,c.archived,jsonb_array_length(c.questions) AS questions,
         (SELECT count(*) FROM attempts t WHERE t.assignment_id=a.id) AS attempts,
         (SELECT max(score) FROM attempts t WHERE t.assignment_id=a.id) AS best_score,
         EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id AND passed) AS passed,
         (SELECT state FROM outbox o WHERE o.assignment_id=a.id ORDER BY id LIMIT 1) AS notification
         FROM assignments a JOIN courses c ON c.id=a.course_id JOIN staff s ON s.id=a.staff_id
-        WHERE (a.staff_id=%s OR (%s AND (%s OR s.restaurant=%s))) ORDER BY a.deadline,a.id''',(u['id'],u['role'] in ('manager','local'),u['role']=='manager',u['restaurant'])).fetchall()
+        WHERE (a.staff_id=%s OR (%s AND (%s OR s.restaurant=%s))) AND (NOT c.archived OR %s) ORDER BY a.deadline,a.id''',(u['id'],u['role'] in ('manager','local'),u['role']=='manager',u['restaurant'],u['role'] in ('manager','local'))).fetchall()
 
 @app.get('/api/assignments/{aid}')
 def assignment(aid:int,request:Request):
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
+        if row['archived']: raise HTTPException(410,'Это задание архивировано руководителем')
         questions=row['questions']
         row['history']=c.execute('SELECT id,score,passed,created_at FROM attempts WHERE assignment_id=%s ORDER BY id',(aid,)).fetchall()
         row['finished']=any(t['passed'] for t in row['history']) or len(row['history'])>=row['max_attempts']
@@ -269,7 +288,9 @@ def assignment(aid:int,request:Request):
 def acknowledge(aid:int,request:Request):
     with db() as c:
         u=require(c,request)
-        row=c.execute('UPDATE assignments SET acknowledged_at=coalesce(acknowledged_at,now()) WHERE id=%s AND staff_id=%s RETURNING id',(aid,u['id'])).fetchone()
+        row=c.execute('''UPDATE assignments a SET acknowledged_at=coalesce(a.acknowledged_at,now())
+          FROM courses c WHERE c.id=a.course_id AND NOT c.archived AND a.id=%s AND a.staff_id=%s
+          RETURNING a.id''',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
     return {'ok':True}
 
@@ -280,8 +301,9 @@ async def submit(aid:int,request:Request):
     except (KeyError,ValueError,TypeError): raise HTTPException(422,'Некорректный идентификатор попытки')
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.questions,c.pass_score FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
+        if row['archived']:raise HTTPException(410,'Этот тест архивирован руководителем')
         old=c.execute('SELECT id,score,passed FROM attempts WHERE assignment_id=%s AND request_id=%s',(aid,rid)).fetchone()
         if old:return old
         if c.execute('SELECT 1 FROM attempts WHERE assignment_id=%s AND passed LIMIT 1',(aid,)).fetchone():raise HTTPException(409,'Тест уже сдан')
