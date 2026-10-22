@@ -88,15 +88,17 @@ function showChapter(){
 }
 function bindDishPractice(courseId,dishId){
  const form=$('#dish-practice-form');if(!form)return;
+ let practiceRequestId=null,previousText='';
  form.onsubmit=async e=>{
   e.preventDefault();const button=form.querySelector('[type="submit"]');
   const answer=form.elements.namedItem('answer').value;
   if(answer.trim().length<40){error(Error('Напиши не менее 40 символов'));return}
+  if(answer!==previousText){practiceRequestId=crypto.randomUUID();previousText=answer}
   const state=$('#dish-practice-state');button.disabled=true;
   state.textContent='ИИ проверяет твой ответ…';
   try{
    const f=await api('learning/'+courseId+'/dish-practice','POST',{
-    dish_id:dishId,request_id:crypto.randomUUID(),answer
+    dish_id:dishId,request_id:practiceRequestId,answer
    });
    $('#dish-practice-feedback').innerHTML='<div class="card result-card">'+
     '<h3>Твой разбор</h3><p>'+esc(f.summary)+'</p>'+
@@ -105,6 +107,7 @@ function bindDishPractice(courseId,dishId){
     '<h3>Следующий шаг</h3><p>'+esc(f.next_step)+'</p>'+
     '<p class="muted">ИИ даёт учебную обратную связь. Допуск к работе подтверждает руководитель.</p></div>';
    state.textContent='Разбор сохранён в твоём профиле.';
+   practiceRequestId=null;previousText='';
   }catch(err){
    state.textContent='Ответ не оценён. Он остался в поле — можно повторить позже.';
    error(err);
