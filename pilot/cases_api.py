@@ -36,9 +36,12 @@ def case_payload(d):
     }
 
 def public_case(row, managerial=False):
-    fields = ("id", "title", "competency", "action", "scenario", "source", "published")
+    # Trainees receive only the situation: competency and actions would spoil the exercise.
+    fields = ("id", "title", "scenario", "source", "published")
     obj = {k: row[k] for k in fields}
     if managerial:
+        obj["competency"] = row["competency"]
+        obj["action"] = row["action"]
         obj["criteria"] = row["criteria"]
         obj["archived"] = row["archived"]
     return obj

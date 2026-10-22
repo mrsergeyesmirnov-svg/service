@@ -36,3 +36,37 @@ main{overflow-wrap:anywhere;padding-bottom:120px}
 nav{position:fixed;bottom:0;left:0;right:0;z-index:5;background:white;border-top:1px solid var(--border);padding:8px 8px calc(10px + env(safe-area-inset-bottom));border-radius:20px 20px 0 0}
 nav button.nav-item{flex:1;min-width:0}
 @media(min-width:760px){main{padding-top:24px}.learning-hero{padding:28px}.direction-grid{grid-template-columns:repeat(4,1fr)}}
+
+/* Curated course lessons: mobile-first photo, clear ingredient list, usable navigation. */
+.chapter .dish-photo.wide{height:auto;aspect-ratio:4/3;margin:18px -6px 22px}
+.chapter .dish-photo.wide img{object-fit:contain;background:#edf3e8}
+.chapter .badge{background:#eef3e7;color:var(--forest);padding:5px 10px}
+.chapter h2{font-size:18px;color:var(--forest);margin:22px 0 10px}
+.chapter-ingredients{list-style:none;padding:0;margin:4px 0 8px;display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.chapter-ingredients li{background:#f2f6ec;border:1px solid #e2e9da;padding:12px;border-radius:12px;font-size:15px;line-height:1.4;overflow-wrap:break-word}
+.lesson-source{white-space:pre-line;line-height:1.72}
+.lesson-practice{padding:18px;border:1px solid #dfe8d3;border-radius:16px;background:#f3f8e8;margin-top:24px}
+.lesson-practice strong{color:var(--forest)}
+.lesson-practice p{margin:10px 0 0;font-size:15px;line-height:1.5}
+.chapter-actions button{flex:1;min-width:0}
+.chapter-actions .lime-action{margin-top:0}
+.map-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:14px;background:white;margin:9px 0}
+.map-row>span{flex:1;min-width:0;display:grid;gap:5px;line-height:1.3}
+.map-row small{color:#617469}
+.map-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
+.map-row button{padding:9px 11px;min-height:42px;margin:0;white-space:nowrap;font-size:13px}
+.map-sticky{position:sticky;bottom:calc(86px + env(safe-area-inset-bottom));z-index:3;background:var(--canvas);padding:14px 0;border-top:1px solid var(--border);margin-top:18px}
+.map-sticky button{width:100%;background:var(--forest);color:white}
+@media(max-width:410px){.chapter-ingredients{grid-template-columns:1fr}.map-row{align-items:flex-start}.map-row button{font-size:12px}}
+
+.lesson-ai{background:white;border:1px solid var(--border);border-radius:19px;margin:18px 0;padding:22px}
+.lesson-ai textarea{width:100%;min-height:130px;resize:vertical;line-height:1.6;font-size:16px}
+.lesson-ai>button{background:var(--lime);color:var(--forest);width:100%;margin-top:12px}
+.lesson-ai .result-card{margin:18px 0 0}
+.lesson-ai .result-card h3{color:var(--forest);margin:16px 0 6px}
+.lesson-ai #dish-practice-state{font-size:14px;color:#617469}
+
+.text-chapter-editor textarea{font-size:16px;line-height:1.6;width:100%;min-height:170px}
+.text-chapter-editor .row{align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.text-chapter-editor label{display:block;margin:14px 0}
+.text-chapter-editor input{font-size:16px}

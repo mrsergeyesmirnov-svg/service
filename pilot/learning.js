@@ -9,13 +9,13 @@ function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]
 function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
-function learningDone(c){return c.read===c.chapters&&(!c.questions||c.passed)}
-function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
+function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
+function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав${c.structured?' · карточки блюд':''}</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
  if(page==='catalog'){
-  root.innerHTML='<h1>Курсы</h1>'+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
+  root.innerHTML='<h1>Курсы</h1><p>'+btn(isManager()?'Карточки блюд · управление':'Карточки блюд','dish-open')+'</p>'+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
   return;
  }
  const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0),next=learningCourses.find(c=>!learningDone(c));
@@ -30,10 +30,89 @@ async function study(id){
  showChapter();
 }
 function studyHeader(sub){return `<div class="lesson-top">${btn('←','nav','catalog','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
+function legacyText(text){
+ // Display only: original course source remains immutable in PostgreSQL.
+ return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
+}
+function chapterBody(p){
+ if(p.kind==='text')return '<div class="body lesson-source">'+esc(p.body)+'</div>'+ (p.source?'<p class="muted">Источник: '+esc(p.source)+'</p>':'');
+ if(p.kind!=='dish')
+  return '<p class="muted">Материал исходного курса. Менеджер может заменить его проверенными карточками блюд.</p>'+
+   '<div class="body lesson-source">'+esc(legacyText(p.body))+'</div>';
+ return (p.has_photo?dishPhoto(p.dish_id,'wide'):'<div class="dish-photo wide"><span>Фотография готовится</span></div>')+
+ '<p class="eyebrow">'+esc(p.section)+'</p><h2>Состав блюда</h2>'+
+ (p.ingredients?.length?'<ul class="chapter-ingredients">'+p.ingredients.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':
+  '<p class="muted">Ингредиенты проверяются менеджером.</p>')+
+ '<h2>Особенности и подача</h2><div class="body lesson-source">'+esc(p.description||'Описание блюда готовится.')+'</div>'+
+ '<p class="muted">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>'+
+ '<section class="lesson-practice"><strong>Проверь себя</strong>'+
+ '<p>Сможешь без подсказок назвать основные ингредиенты и объяснить это блюдо гостю за 20–30 секунд?</p>'+
+ '<p class="muted">После изучения можно потренировать презентацию. Итоговый тест проверит знания без подсказок.</p></section>'+
+ '<form id="dish-practice-form" class="lesson-ai"><h2>Презентуй блюдо гостю</h2>'+
+ '<label>Представь, что гость спрашивает про это блюдо. Что ты скажешь?'+
+ '<textarea name="answer" required minlength="40" maxlength="1600" rows="5" placeholder="Начни со своих слов, без подсказок…"></textarea></label>'+
+ '<p class="muted">Не указывай персональные данные гостей. Ответ отправится в Yandex AI Studio для учебного разбора — это не экзамен и не допуск к смене.</p>'+
+ '<button type="submit">Получить разбор ИИ</button><p id="dish-practice-state" role="status"></p>'+
+ '<div id="dish-practice-feedback" aria-live="polite"></div></form>';
+}
 function showChapter(){
- const c=activeCourse,p=c.chapters[chapterIndex],all=c.chapters.every(p=>c.read.includes(p.id));
- $('#app').innerHTML=studyHeader(`Глава ${chapterIndex+1} из ${c.chapters.length}`)+`<progress max="${c.chapters.length}" value="${c.read.length}"></progress><article class="card chapter"><span class="badge">${c.read.includes(p.id)?'Прочитано':'Учебный материал'}</span><h1>${esc(p.title)}</h1><div class="body">${esc(p.body)}</div></article><div class="actions">${chapterIndex?btn('← Назад','chapter-prev','','secondary'):''}${btn(c.read.includes(p.id)?'Далее →':'Прочитано, далее →','chapter-next')}</div><p class="muted">Источник: ${esc(c.source)}</p>${all&&c.questions.length?btn('Закрепить знания: тест →','study-quiz'):''}<section class="card"><h2>Мои результаты</h2>${c.history.length?c.history.map(t=>`<p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))} · ${t.score}% · ${t.passed?'Сдано':'Повторить материал'}</p>`).join(''):'<p class="muted">Тест ещё не пройден.</p>'}</section>${isManager()?btn('Результаты команды','study-results',c.id,'secondary'):''}`;
+ const c=activeCourse;
+ if(!c.chapters.length){
+  $('#app').innerHTML=studyHeader('Материалы на проверке')+
+    '<section class="card"><h1>Уроки временно недоступны</h1>'+
+    '<p>Менеджер проверяет или обновляет карточки блюд. Результаты предыдущих тестов сохранены.</p>'+
+    btn('К каталогу','nav','catalog','secondary')+'</section>';
+  return;
+ }
+ chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
+ const p=c.chapters[chapterIndex],finished=c.chapters.every(p=>c.read.includes(p.id));
+ const read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
+ '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
+ '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Учебный материал')+'</span>'+
+ '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
+ '<div class="actions chapter-actions">'+
+ (chapterIndex?btn('← Предыдущая','chapter-prev','','secondary'):'')+
+ btn(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →','chapter-next','', 'lime-action')+'</div>'+
+ (p.kind==='dish'?'':'<p class="muted">Источник: '+esc(c.source)+'</p>')+
+ (finished&&c.questions.length?'<div class="card"><h2>Готов к проверке знаний?</h2>'+
+ '<p>Ты изучил все главы. Теперь закрепи материал тестом.</p>'+
+ btn('Пройти тест →','study-quiz')+'</div>':'')+
+ '<section class="card"><h2>Мои результаты</h2>'+
+ (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
+ ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
+ '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+
+ (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
+ if(p.kind==='dish'){showDishPhotos();bindDishPractice(c.id,p.dish_id)}
  window.scrollTo(0,0);
+}
+function bindDishPractice(courseId,dishId){
+ const form=$('#dish-practice-form');if(!form)return;
+ let practiceRequestId=null,previousText='';
+ form.onsubmit=async e=>{
+  e.preventDefault();const button=form.querySelector('[type="submit"]');
+  const answer=form.elements.namedItem('answer').value;
+  if(answer.trim().length<40){error(Error('Напиши не менее 40 символов'));return}
+  if(answer!==previousText){practiceRequestId=crypto.randomUUID();previousText=answer}
+  const state=$('#dish-practice-state');button.disabled=true;
+  state.textContent='ИИ проверяет твой ответ…';
+  try{
+   const f=await api('learning/'+courseId+'/dish-practice','POST',{
+    dish_id:dishId,request_id:practiceRequestId,answer
+   });
+   $('#dish-practice-feedback').innerHTML='<div class="card result-card">'+
+    '<h3>Твой разбор</h3><p>'+esc(f.summary)+'</p>'+
+    '<h3>Что получилось</h3><p>'+esc(f.strengths)+'</p>'+
+    '<h3>Что улучшить</h3><p>'+esc(f.improvements)+'</p>'+
+    '<h3>Следующий шаг</h3><p>'+esc(f.next_step)+'</p>'+
+    '<p class="muted">ИИ даёт учебную обратную связь. Допуск к работе подтверждает руководитель.</p></div>';
+   state.textContent='Разбор сохранён в твоём профиле.';
+   practiceRequestId=null;previousText='';
+  }catch(err){
+   state.textContent='Ответ не оценён. Он остался в поле — можно повторить позже.';
+   error(err);
+  }finally{button.disabled=false}
+ };
 }
 function showStudyQuiz(){
  const c=activeCourse,q=c.questions[quizIndex];
@@ -54,9 +133,47 @@ function showStudyResult(r){
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results'].includes(action))return;
+ if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
+  if(action==='course-text-editor')await editTextChapters(Number(id));
+  if(action==='text-chapter-add'){readTextChapterDraft();textChaptersDraft.push({title:'',body:'',source:''});renderTextChapterEditor()}
+  if(action==='text-chapter-remove'){readTextChapterDraft();textChaptersDraft.splice(Number(id),1);renderTextChapterEditor()}
+  if(action==='text-chapter-up'||action==='text-chapter-down'){
+    readTextChapterDraft();const k=Number(id),other=k+(action==='text-chapter-up'?-1:1);
+    if(k>=0&&other>=0&&other<textChaptersDraft.length)[textChaptersDraft[k],textChaptersDraft[other]]=[textChaptersDraft[other],textChaptersDraft[k]];
+    renderTextChapterEditor();
+  }
+  if(action==='text-chapter-save')await saveTextChapters();
+  if(action==='course-map')await editCourseDishMap(Number(id));
+  if(action==='course-map-add'){
+    const dish=Number(id);
+    if(courseMapSelected.length>=80)throw Error('В одном курсе максимум 80 карточек');
+    if(!courseMapSelected.includes(dish))courseMapSelected.push(dish);
+    renderCourseMap();
+  }
+  if(action==='course-map-remove'){
+    courseMapSelected=courseMapSelected.filter(x=>x!==Number(id));renderCourseMap();
+  }
+  if(action==='course-map-up'||action==='course-map-down'){
+    const idx=courseMapSelected.indexOf(Number(id)),other=idx+(action==='course-map-up'?-1:1);
+    if(idx>=0&&other>=0&&other<courseMapSelected.length)
+     [courseMapSelected[idx],courseMapSelected[other]]=[courseMapSelected[other],courseMapSelected[idx]];
+    renderCourseMap();
+  }
+  if(action==='course-map-suggest'){
+    const r=courseMapSource.match(/(?:с\.|стр\.|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+    if(r){
+      const first=Number(r[1]),last=Number(r[2]);
+      const proposed=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last)
+       .sort((a,b)=>a.source_page-b.source_page||a.id-b.id).map(c=>c.id);
+      if(proposed.length&&confirm('Добавить '+proposed.length+' карточек по страницам '+first+'–'+last+'? Проверь порядок и каждое блюдо до сохранения.')){
+        courseMapSelected=[...new Set([...courseMapSelected,...proposed])].slice(0,80);
+        renderCourseMap();
+      }
+    }
+  }
+  if(action==='course-map-save')await saveCourseDishMap();
   if(action==='study')await study(Number(id));
   if(action==='direction'){view='catalog';await render();filterCourses(id)}
   if(action==='filter')filterCourses(id);
@@ -75,3 +192,109 @@ document.addEventListener('click',async e=>{
  }catch(err){error(err)}finally{b.disabled=false}
 });
 function filterCourses(id){$('#course-list').innerHTML=learningCourses.filter(c=>id==='all'||c.category===id).map(courseCard).join('')||'<div class="card">В этом направлении пока нет утверждённых курсов.</div>';document.querySelectorAll('[data-action=filter]').forEach(b=>b.classList.toggle('active',b.dataset.id===id))}
+
+
+// Managers curate the chapter sequence from reviewed dish cards.
+// This does not change a course's questions or previous exam attempts.
+let courseMapId=null,courseMapTitle='',courseMapSource='',courseMapSelected=[],courseMapAvailable=[],courseMapSearch='';
+async function editCourseDishMap(id){
+ if(!isManager())throw Error('Доступ только менеджеру');
+ const [mapping,cards]=await Promise.all([api('learning/'+id+'/dish-map'),api('dishes')]);
+ courseMapId=id;courseMapTitle=mapping.title;courseMapSource=mapping.source||'';
+ courseMapSelected=[...mapping.dish_ids];courseMapAvailable=cards.filter(c=>c.published);
+ courseMapSearch='';
+ $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
+ '<h1>Главы курса</h1><p class="muted">'+esc(courseMapTitle)+'</p>'+
+ '<div class="card"><p>Выбери опубликованные карточки блюд и установи порядок. Сотрудник будет читать их вместо сырого текста станционок, после чего сможет пройти существующий тест.</p>'+ 
+ '<p class="muted">При изменении рецептуры карточка снова станет черновиком и исчезнет из учебного курса до повторной проверки.</p></div>'+
+ '<div id="course-map-suggest"></div><h2>Порядок глав</h2><div id="course-map-picked"></div>'+ 
+ '<h2>Добавить из каталога</h2><label>Поиск по названию и разделу'+
+ '<input type="search" id="course-map-search" placeholder="Например: роллы, песто, салат"></label>'+
+ '<div id="course-map-available"></div>'+
+ '<div class="map-sticky">'+btn('Сохранить состав курса','course-map-save')+'</div>';
+ $('#course-map-search').oninput=e=>{courseMapSearch=e.target.value;renderCourseMap()};
+ renderCourseMap();
+}
+function renderCourseMap(){
+ if(courseMapId===null)return;
+ const range=courseMapSource.match(/(?:с\.|стр\.|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+ if(range){
+  const first=Number(range[1]),last=Number(range[2]);
+  const available=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last);
+  $('#course-map-suggest').innerHTML=available.length?
+   '<div class="card"><p>Источник: '+esc(courseMapSource)+'</p>'+
+   '<p>На страницах '+first+'–'+last+' найдено '+available.length+' опубликованных карточек.</p>'+
+   btn('Подобрать по страницам (проверить вручную)','course-map-suggest','','secondary')+'</div>':'';
+ } else $('#course-map-suggest').innerHTML='';
+ const byId=new Map(courseMapAvailable.map(c=>[c.id,c]));
+ const chosen=courseMapSelected.map((id,index)=>{
+  const c=byId.get(id),caption=c?esc(c.title):'Карточка №'+id+' (сейчас не опубликована)';
+  return '<div class="map-row"><span><b>'+(index+1)+'. '+caption+'</b>'+
+  (c?'<small>'+esc(c.section)+'</small>':'<small>Удали или утверди карточку заново</small>')+'</span>'+
+  '<div class="map-buttons">'+(index?btn('↑','course-map-up',id,'secondary'):'')+
+  (index<courseMapSelected.length-1?btn('↓','course-map-down',id,'secondary'):'')+
+  btn('Убрать','course-map-remove',id,'secondary')+'</div></div>';
+ }).join('');
+ $('#course-map-picked').innerHTML=chosen||'<div class="card"><p>Пока нет глав. Добавь карточки из каталога ниже.</p></div>';
+ const keyword=courseMapSearch.toLocaleLowerCase('ru');
+ const options=courseMapAvailable.filter(c=>!courseMapSelected.includes(c.id) &&
+  (c.title+' '+c.section).toLocaleLowerCase('ru').includes(keyword)).slice(0,80);
+ $('#course-map-available').innerHTML=options.map(c=>
+  '<div class="map-row"><span><b>'+esc(c.title)+'</b><small>'+esc(c.section)+'</small></span>'+
+  btn('Добавить +','course-map-add',c.id,'secondary')+'</div>').join('')||
+  '<p class="muted">Нет подходящих опубликованных блюд. Добавить новые можно в разделе «Карточки блюд».</p>';
+}
+async function saveCourseDishMap(){
+ if(courseMapId===null)return;
+ if(!courseMapSelected.length&&!confirm('Удалить все привязки? Тогда снова будет показан исходный текст курса.'))return;
+ const r=await api('learning/'+courseMapId+'/dish-map','PUT',{dish_ids:courseMapSelected});
+ courseMapId=null;
+ view='courses';await render();
+}
+
+
+// Text chapters for coffee, service and other courses without recipe cards.
+let textChapterCourse=null,textChapterTitle='',textChapterSource='',textChaptersDraft=[];
+async function editTextChapters(cid){
+ if(!isManager())throw Error('Доступ только руководителю');
+ const data=await api('learning/'+cid+'/text-chapters');
+ textChapterCourse=cid;textChapterTitle=data.title;textChapterSource=data.source;
+ textChaptersDraft=data.chapters.map(x=>({...x}));
+ renderTextChapterEditor();
+}
+function readTextChapterDraft(){
+ const editor=$('#text-chapters-form');if(!editor)return;
+ const fields=[...editor.querySelectorAll('[data-chapter-index]')];
+ textChaptersDraft=fields.map(node=>({
+  title:node.querySelector('[name=title]').value,
+  body:node.querySelector('[name=body]').value,
+  source:node.querySelector('[name=source]').value
+ }));
+}
+function renderTextChapterEditor(){
+ $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
+ '<h1>Редактор учебных глав</h1><p class="muted">'+esc(textChapterTitle)+'</p>'+
+ '<div class="card"><p>Введи короткие учебные главы вместо сырого текста PDF. Сохраняются отдельные уроки, а тест и предыдущие результаты курса не меняются.</p>'+
+ '<p class="muted">Если в курсе привязаны карточки блюд, сначала отвяжи их в редакторе карточек — два формата нельзя включить одновременно.</p></div>'+
+ '<form id="text-chapters-form">'+textChaptersDraft.map((ch,i)=>
+  '<article class="card text-chapter-editor" data-chapter-index="'+i+'">'+
+  '<div class="row"><strong>Глава '+(i+1)+'</strong>'+
+  '<div class="map-buttons">'+(i?btn('↑','text-chapter-up',i,'secondary'):'')+
+  (i<textChaptersDraft.length-1?btn('↓','text-chapter-down',i,'secondary'):'')+
+  btn('Удалить','text-chapter-remove',i,'secondary')+'</div></div>'+
+  '<label>Заголовок<input maxlength="180" required name="title" value="'+esc(ch.title)+'"></label>'+
+  '<label>Учебный текст<textarea name="body" required maxlength="6000" rows="8">'+esc(ch.body)+'</textarea></label>'+
+  '<label>Источник (необязательно)<input name="source" maxlength="500" value="'+esc(ch.source||textChapterSource)+'"></label>'+
+  '</article>').join('')+'</form>'+
+ '<div class="actions">'+btn('Добавить главу +','text-chapter-add','','secondary')+
+ btn('Сохранить главы','text-chapter-save')+'</div>'+
+ '<p class="muted">До 60 глав по 6000 символов. Редактирование меняет идентификатор главы и потребует повторного ознакомления, но результаты тестов сохраняются.</p>';
+ $('#text-chapters-form').querySelectorAll('button').forEach(b=>b.type='button');
+}
+async function saveTextChapters(){
+ readTextChapterDraft();
+ if(!textChaptersDraft.length&&!confirm('Удалить все созданные главы? Вернётся старый исходный текст курса.'))return;
+ if(textChaptersDraft.some(x=>!x.title.trim()||!x.body.trim()))throw Error('Заполни заголовок и текст каждой главы');
+ await api('learning/'+textChapterCourse+'/text-chapters','PUT',{chapters:textChaptersDraft});
+ textChapterCourse=null;view='courses';await render();
+}

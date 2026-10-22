@@ -79,3 +79,66 @@ CREATE TABLE IF NOT EXISTS learning_attempts (
 );
 -- Published scenarios can be retired without deleting employee attempt history.
 ALTER TABLE case_scenarios ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+
+
+-- Private editable dish cards, kept separately from published immutable course versions.
+CREATE TABLE IF NOT EXISTS dish_cards (
+ id BIGSERIAL PRIMARY KEY,
+ restaurant TEXT NOT NULL,
+ created_by BIGINT NOT NULL REFERENCES staff(id),
+ title TEXT NOT NULL,
+ section TEXT NOT NULL,
+ ingredients JSONB NOT NULL DEFAULT '[]',
+ description TEXT NOT NULL DEFAULT '',
+ photo BYTEA,
+ source_name TEXT NOT NULL DEFAULT 'Ручная карточка',
+ source_page INTEGER,
+ source_slot INTEGER NOT NULL DEFAULT 0,
+ source_hash TEXT,
+ warning TEXT,
+ published BOOLEAN NOT NULL DEFAULT FALSE,
+ archived BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(restaurant,source_hash,source_page,source_slot)
+);
+CREATE INDEX IF NOT EXISTS dish_cards_visible ON dish_cards(restaurant,published,archived);
+
+
+-- Manager-selected published dish cards form clean chapters inside existing courses.
+-- Existing quizzes and attempts stay linked to their original course ID.
+CREATE TABLE IF NOT EXISTS course_dishes (
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ dish_id BIGINT NOT NULL REFERENCES dish_cards(id),
+ position INT NOT NULL CHECK(position >= 0),
+ PRIMARY KEY(course_id,dish_id),
+ UNIQUE(course_id,position)
+);
+
+
+-- Advisory AI practice is not an exam and does not affect course pass status.
+CREATE TABLE IF NOT EXISTS dish_practice_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ dish_id BIGINT NOT NULL REFERENCES dish_cards(id),
+ request_id UUID NOT NULL,
+ answer TEXT NOT NULL,
+ feedback JSONB,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','failed')),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(staff_id,course_id,dish_id,request_id)
+);
+CREATE INDEX IF NOT EXISTS dish_practice_daily ON dish_practice_attempts(staff_id,created_at);
+
+
+-- Manager-authored structured chapters for theory of coffee, service and other non-dish courses.
+CREATE TABLE IF NOT EXISTS course_text_outline (
+ course_id BIGINT PRIMARY KEY REFERENCES courses(id),
+ chapters JSONB NOT NULL,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Limit billed retries of one written practice answer, including network-ambiguous attempts.
+ALTER TABLE dish_practice_attempts ADD COLUMN IF NOT EXISTS tries INTEGER NOT NULL DEFAULT 1;

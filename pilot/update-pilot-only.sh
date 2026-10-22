@@ -14,12 +14,12 @@ bash pilot/backup.sh
 OLD_IMAGE="$(docker inspect --format '{{.Image}}' service-academy-api)"
 RELEASE="service-academy-pilot:update-$(date -u +%Y%m%dT%H%M%SZ)"
 docker build -t "$RELEASE" -f pilot/Dockerfile .
-docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_cases test_pilot
+docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot
 echo "Backup and tests OK. Replacing Academy API only."
 docker rm -f service-academy-api
 run_api() {
  docker run -d --name service-academy-api --restart unless-stopped \
-   --network service-academy-net --memory 256m --env-file "$CFG" \
+   --network service-academy-net --memory 640m --env-file "$CFG" \
    --log-opt max-size=10m --log-opt max-file=3 "$1" >/dev/null
 }
 api_healthy() {
