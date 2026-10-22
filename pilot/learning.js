@@ -286,6 +286,7 @@ function renderTextChapterEditor(){
  '<div class="actions">'+btn('Добавить главу +','text-chapter-add','','secondary')+
  btn('Сохранить главы','text-chapter-save')+'</div>'+
  '<p class="muted">До 60 глав по 6000 символов. Редактирование меняет идентификатор главы и потребует повторного ознакомления, но результаты тестов сохраняются.</p>';
+ $('#text-chapters-form').querySelectorAll('button').forEach(b=>b.type='button');
 }
 async function saveTextChapters(){
  readTextChapterDraft();
