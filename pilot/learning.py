@@ -121,7 +121,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             r=c.execute('SELECT * FROM courses WHERE id=%s',(cid,)).fetchone()
             if not r:raise HTTPException(404,'Курс не найден')
             scope(u,r['restaurant'])
-            return {'course_id':cid,'title':r['title'],'dish_ids':map_details(c,cid)}
+            return {'course_id':cid,'title':r['title'],'source':r['source'],'dish_ids':map_details(c,cid)}
 
     @router.put('/{cid}/dish-map')
     async def put_dish_map(cid:int,request:Request):
