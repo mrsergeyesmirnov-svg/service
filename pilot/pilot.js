@@ -5,8 +5,21 @@ const roles={trainee:'Стажёр',waiter:'Официант',manager:'Мене�
 const isManager=()=>['manager','local'].includes(user?.role);
 let caseCache=[];
 const btn=(label,action,id='',cls='')=>`<button class="${cls}" data-action="${action}" data-id="${id}">${label}</button>`;
-function error(e){$('#error').textContent=e.message||e;setTimeout(()=>$('#error').textContent='',8000)}
-async function api(path,method='GET',body){const r=await fetch('/api/'+path,{method,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'Не удалось выполнить запрос');return data}
+function error(e){const field=$('#error');field.textContent=e.message||e;field.setAttribute('role','alert');setTimeout(()=>{if(field.textContent===(e.message||e))field.textContent=''},14000)}
+async function api(path,method='GET',body){
+  const controller=new AbortController(),clock=setTimeout(()=>controller.abort(),45000);
+  let response;
+  try{
+    response=await fetch('/api/'+path,{method,signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body===undefined?undefined:JSON.stringify(body)});
+  }catch(e){
+    if(e.name==='AbortError')throw Error('Сервер не ответил за 45 секунд. Текст сохранён на экране — проверь соединение и повтори.');
+    throw Error('Нет соединения с Академией (сетевая ошибка). Твой ответ остался в поле — попробуй ещё раз.');
+  }finally{clearTimeout(clock)}
+  let data;
+  try{data=await response.json()}catch(e){throw Error('Сервер прислал некорректный ответ. Попробуй снова или сообщи менеджеру.')}
+  if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:('Ошибка сервера: '+response.status));
+  return data;
+}
 function nav(){const tabs=isManager()?[['assignments','Обзор'],['team','Команда'],['courses','Обучение'],['cases','Кейсы'],['profile','Профиль']]:[['assignments','Мои задания'],['cases','Практика'],['profile','Профиль']];$('#nav').innerHTML=tabs.map(([id,label])=>btn(label,'nav',id,view===id?'active':'')).join('')}
 const done=a=>a.questions?a.passed:!!a.acknowledged_at;
 const dateLabel=s=>new Date(s+'T12:00:00').toLocaleDateString('ru-RU');
@@ -32,10 +45,10 @@ function previewCourse(c){$('#app').innerHTML=`${btn('К обучению','nav'
 async function casesPage(){
   caseCache=await api('cases');
   const root=$('#app');
-  let html="<h1>Практика на смене</h1><p class='muted'>Решаем ситуации из жизни MOJO. ИИ помогает увидеть сильные стороны и улучшить решение, но не ставит допуск к работе.</p>";
+  let html="<div class='section-heading'><span class='eyebrow'>MOJO / практика</span><h1>Учимся на ситуациях</h1><p class='muted'>Представь себя на смене. Опиши своё решение своими словами — без подсказок.</p></div>";
   if(isManager())html+="<p>"+btn('Создать кейс','case-new')+"</p>"+bulkImportPanel('cases');
   html+=caseCache.length?caseCache.map(c=>{
-    return "<div class='card'><span class='badge'>"+esc(c.published?'Опубликовано':'Черновик')+"</span><h2>"+esc(c.title)+"</h2><p>"+esc(c.competency)+"</p><p class='muted'>Навык: "+esc(c.action)+"</p><div class='actions'>"+(c.published?btn('Решить кейс','case-open',c.id):btn('Предпросмотр и проверка','case-review',c.id))+(isManager()?btn("Ответы команды","case-results",c.id,"secondary"):"")+"</div></div>";
+    return "<div class='card case-card'><span class='badge'>"+esc(c.published?'Опубликовано':'Черновик')+"</span><h2>"+esc(c.title)+"</h2>"+(isManager()?"<p class='muted'>"+esc(c.competency)+" · "+esc(c.action)+"</p>":"<p class='muted'>Реальная ситуация из смены. Подумай самостоятельно, прежде чем отвечать.</p>")+"<div class='actions'>"+(c.published?btn('Решить кейс','case-open',c.id):btn('Предпросмотр и проверка','case-review',c.id))+(isManager()?btn("Ответы команды","case-results",c.id,"secondary"):"")+"</div></div>";
   }).join(''):"<div class='card'>Пока нет утверждённых практических кейсов. Менеджер добавит ситуации на основе ServiceBook.</div>";
   root.innerHTML=html;
   if(isManager())bindBulkImport('cases');
@@ -91,26 +104,31 @@ async function caseDetail(id){
     "<p><b>Следующий шаг:</b> "+esc(h.feedback.next_step)+"</p></article>"
   ).join('');
   $('#app').innerHTML=btn('Все кейсы','nav','cases','secondary')+
-    "<h1>"+esc(c.title)+"</h1><p class='muted'>Компетенция: "+esc(c.competency)+"</p>"+
-    "<article class='card'><h2>Ситуация</h2><p class='body'>"+esc(c.scenario)+"</p>"+
-    "<p class='muted'>Источник: "+esc(c.source)+"</p></article>"+
-    "<form id='case-answer' class='card'><label>Опиши по шагам, что ты сделаешь и что скажешь гостю<textarea name='answer' required minlength='40' maxlength='1600' placeholder='Сначала я...'></textarea></label>"+
+    "<div class='section-heading'><span class='eyebrow'>Ситуационная практика</span><h1>"+esc(c.title)+"</h1><p class='muted'>Как бы ты поступил на реальной смене?</p></div>"+
+    "<article class='card case-scenario'><span class='eyebrow'>Ситуация</span><p class='body case-prompt'>"+esc(c.scenario)+"</p></article>"+
+    "<form id='case-answer' class='card case-answer-card'><h2>Твоё решение</h2><label>Расскажи, что ты сделаешь и что скажешь гостю<textarea name='answer' required minlength='40' maxlength='1600' placeholder='Я бы поступил так…'></textarea></label>"+
     "<p class='muted'>Не указывай имена гостей, телефоны и другие персональные данные. Ответ отправится в Yandex AI Studio для разбора. Не является экзаменом.</p>"+
-    "<button type='submit'>Получить обратную связь</button></form>"+
+    "<button type='submit' class='lime-action'>Разобрать с ИИ →</button><p id='case-request-state' class='muted' role='status' aria-live='polite'></p></form>"+
     "<section id='case-feedback'></section>"+
     (history.length?"<h2>Предыдущие разборы</h2>"+previous:"");
+  let retryRequestId=null,lastAnswer='';
   $('#case-answer').onsubmit=async e=>{
-    e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
-    const text=e.target.querySelector('textarea').value, request_id=crypto.randomUUID();
+    e.preventDefault();const button=e.target.querySelector('button'),status=$('#case-request-state');button.disabled=true;
+    const answer=e.target.querySelector('textarea').value;
+    if(answer!==lastAnswer){retryRequestId=crypto.randomUUID();lastAnswer=answer}
+    status.textContent='ИИ анализирует твой ответ. Не закрывай экран.';
     try{
-      const f=await api('cases/'+id+'/practice','POST',{answer:text,request_id});
+      const f=await api('cases/'+id+'/practice','POST',{answer,request_id:retryRequestId});
       $('#case-feedback').innerHTML="<article class='card'><h2>Разбор ситуации</h2>"+
         "<p>"+esc(f.summary)+"</p><h3>Что получилось</h3><p>"+esc(f.strengths)+"</p>"+
         "<h3>Что улучшить</h3><p>"+esc(f.improvements)+"</p>"+
         "<h3>Следующий шаг</h3><p>"+esc(f.next_step)+"</p>"+
         "<p class='muted'>Обратная связь ИИ — учебная, а не решение о допуске.</p></article>";
+      status.textContent='Разбор готов. Ответ сохранён в истории обучения.';
+      retryRequestId=null;lastAnswer='';
+      button.disabled=false;
       $('#case-feedback').scrollIntoView({behavior:'smooth'});
-    }catch(err){button.disabled=false;error(err)}
+    }catch(err){button.disabled=false;status.textContent='Не получилось получить обратную связь. Ответ не пропал — можно повторить.';error(err)}
   };
 }
 
