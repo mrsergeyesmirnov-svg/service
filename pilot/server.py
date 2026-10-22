@@ -12,6 +12,7 @@ from cases_api import make_router
 from learning import make_learning_router
 from dishes import attach as attach_dishes
 from questions import clean_question, public_question, grade_questions
+from question_quality import quality_issues
 
 TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
@@ -149,7 +150,10 @@ async def invite(request:Request):
 def courses(request:Request):
     with db() as c:
         u=require(c,request);manager(u)
-        return c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
+        rows=c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
+        for row in rows:
+            row['quality_issues']=quality_issues(row['questions'])
+        return rows
 
 @app.post('/api/courses')
 async def create_course(request:Request):
