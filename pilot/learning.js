@@ -35,6 +35,7 @@ function legacyText(text){
  return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
 }
 function chapterBody(p){
+ if(p.kind==='text')return '<div class="body lesson-source">'+esc(p.body)+'</div>'+ (p.source?'<p class="muted">Источник: '+esc(p.source)+'</p>':'');
  if(p.kind!=='dish')
   return '<p class="muted">Материал исходного курса. Менеджер может заменить его проверенными карточками блюд.</p>'+
    '<div class="body lesson-source">'+esc(legacyText(p.body))+'</div>';
@@ -129,9 +130,18 @@ function showStudyResult(r){
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest'].includes(action))return;
+ if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
+  if(action==='course-text-editor')await editTextChapters(Number(id));
+  if(action==='text-chapter-add'){readTextChapterDraft();textChaptersDraft.push({title:'',body:'',source:''});renderTextChapterEditor()}
+  if(action==='text-chapter-remove'){readTextChapterDraft();textChaptersDraft.splice(Number(id),1);renderTextChapterEditor()}
+  if(action==='text-chapter-up'||action==='text-chapter-down'){
+    readTextChapterDraft();const k=Number(id),other=k+(action==='text-chapter-up'?-1:1);
+    if(k>=0&&other>=0&&other<textChaptersDraft.length)[textChaptersDraft[k],textChaptersDraft[other]]=[textChaptersDraft[other],textChaptersDraft[k]];
+    renderTextChapterEditor();
+  }
+  if(action==='text-chapter-save')await saveTextChapters();
   if(action==='course-map')await editCourseDishMap(Number(id));
   if(action==='course-map-add'){
     const dish=Number(id);
@@ -237,4 +247,50 @@ async function saveCourseDishMap(){
  const r=await api('learning/'+courseMapId+'/dish-map','PUT',{dish_ids:courseMapSelected});
  courseMapId=null;
  view='courses';await render();
+}
+
+
+// Text chapters for coffee, service and other courses without recipe cards.
+let textChapterCourse=null,textChapterTitle='',textChapterSource='',textChaptersDraft=[];
+async function editTextChapters(cid){
+ if(!isManager())throw Error('Доступ только руководителю');
+ const data=await api('learning/'+cid+'/text-chapters');
+ textChapterCourse=cid;textChapterTitle=data.title;textChapterSource=data.source;
+ textChaptersDraft=data.chapters.map(x=>({...x}));
+ renderTextChapterEditor();
+}
+function readTextChapterDraft(){
+ const editor=$('#text-chapters-form');if(!editor)return;
+ const fields=[...editor.querySelectorAll('[data-chapter-index]')];
+ textChaptersDraft=fields.map(node=>({
+  title:node.querySelector('[name=title]').value,
+  body:node.querySelector('[name=body]').value,
+  source:node.querySelector('[name=source]').value
+ }));
+}
+function renderTextChapterEditor(){
+ $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
+ '<h1>Редактор учебных глав</h1><p class="muted">'+esc(textChapterTitle)+'</p>'+
+ '<div class="card"><p>Введи короткие учебные главы вместо сырого текста PDF. Сохраняются отдельные уроки, а тест и предыдущие результаты курса не меняются.</p>'+
+ '<p class="muted">Если в курсе привязаны карточки блюд, сначала отвяжи их в редакторе карточек — два формата нельзя включить одновременно.</p></div>'+
+ '<form id="text-chapters-form">'+textChaptersDraft.map((ch,i)=>
+  '<article class="card text-chapter-editor" data-chapter-index="'+i+'">'+
+  '<div class="row"><strong>Глава '+(i+1)+'</strong>'+
+  '<div class="map-buttons">'+(i?btn('↑','text-chapter-up',i,'secondary'):'')+
+  (i<textChaptersDraft.length-1?btn('↓','text-chapter-down',i,'secondary'):'')+
+  btn('Удалить','text-chapter-remove',i,'secondary')+'</div></div>'+
+  '<label>Заголовок<input maxlength="180" required name="title" value="'+esc(ch.title)+'"></label>'+
+  '<label>Учебный текст<textarea name="body" required maxlength="6000" rows="8">'+esc(ch.body)+'</textarea></label>'+
+  '<label>Источник (необязательно)<input name="source" maxlength="500" value="'+esc(ch.source||textChapterSource)+'"></label>'+
+  '</article>').join('')+'</form>'+
+ '<div class="actions">'+btn('Добавить главу +','text-chapter-add','','secondary')+
+ btn('Сохранить главы','text-chapter-save')+'</div>'+
+ '<p class="muted">До 60 глав по 6000 символов. Редактирование меняет идентификатор главы и потребует повторного ознакомления, но результаты тестов сохраняются.</p>';
+}
+async function saveTextChapters(){
+ readTextChapterDraft();
+ if(!textChaptersDraft.length&&!confirm('Удалить все созданные главы? Вернётся старый исходный текст курса.'))return;
+ if(textChaptersDraft.some(x=>!x.title.trim()||!x.body.trim()))throw Error('Заполни заголовок и текст каждой главы');
+ await api('learning/'+textChapterCourse+'/text-chapters','PUT',{chapters:textChaptersDraft});
+ textChapterCourse=null;view='courses';await render();
 }
