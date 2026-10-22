@@ -1,4 +1,12 @@
 // The learning screens use server-authenticated identity and PostgreSQL progress.
+function questionInput(q,name,value){
+ if(q.type==='ingredients')return `<label>Перечисли состав по памяти: один ингредиент на строку<textarea name="${name}" required maxlength="3000" placeholder="Напиши состав…">${esc(value||'')}</textarea></label><p class="muted">Количество ингредиентов и подсказки появятся только после ответа.</p>`;
+ const multi=q.type==='multiple';return (multi?'<p class="muted">Отметь все подходящие варианты.</p>':'')+q.options.map((o,i)=>`<label class="option"><input type="${multi?'checkbox':'radio'}" name="${name}" value="${i}" ${multi?'':'required'} ${(multi?(value||[]).includes(i):value===i)?'checked':''}><span>${esc(o)}</span></label>`).join('');
+}
+function readAnswer(q,f,name){return q.type==='ingredients'?String(f.get(name)||''):q.type==='multiple'?f.getAll(name).map(Number):Number(f.get(name))}
+function answerLabel(q,a){return q.type==='ingredients'?String(a??''):Array.isArray(a)?a.map(i=>q.options[i]).join(', '):q.options[a]||'—'}
+function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]).join(', '):answerLabel(q,q.correct)}
+function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
 function learningDone(c){return c.read===c.chapters&&(!c.questions||c.passed)}
@@ -29,10 +37,10 @@ function showChapter(){
 }
 function showStudyQuiz(){
  const c=activeCourse,q=c.questions[quizIndex];
- $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${q.options.map((o,i)=>`<label class="option"><input type="radio" name="answer" value="${i}" required ${quizAnswers[quizIndex]===i?'checked':''}><span>${esc(o)}</span></label>`).join('')}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
+ $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
  if(quizIndex)$('#study-quiz [data-action]').type='button';
  $('#study-quiz').onsubmit=async e=>{
-  e.preventDefault();quizAnswers[quizIndex]=Number(new FormData(e.target).get('answer'));
+  e.preventDefault();quizAnswers[quizIndex]=readAnswer(q,new FormData(e.target),'answer');
   if(quizIndex<c.questions.length-1){quizIndex++;showStudyQuiz();return}
   const button=e.target.querySelector('[type=submit]');button.disabled=true;$('#quiz-state').textContent='Сохраняем результат…';
   try{const r=await api('learning/'+c.id+'/submit','POST',{request_id:quizRequest,answers:quizAnswers});showStudyResult(r)}catch(err){button.disabled=false;$('#quiz-state').textContent='Ответы остались на экране. Можно повторить отправку.';error(err)}
@@ -40,7 +48,7 @@ function showStudyQuiz(){
  window.scrollTo(0,0);
 }
 function showStudyResult(r){
- $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section><h2>Разбор ответов</h2>${r.review.map((q,i)=>`<article class="card"><span class="badge">${q.answer===q.correct?'Верно':'Нужно повторить'}</span><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(q.options[q.answer])}</p>${q.answer!==q.correct?`<p>Правильно: ${esc(q.options[q.correct])}</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`).join('')}${btn('К курсам','nav','catalog','secondary')}`;
+ $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section><h2>Разбор ответов</h2>${r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')}${btn('К курсам','nav','catalog','secondary')}`;
  window.scrollTo(0,0);
 }
 document.addEventListener('click',async e=>{
@@ -60,7 +68,7 @@ document.addEventListener('click',async e=>{
    else showChapter();
   }
   if(action==='study-quiz'){quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
-  if(action==='quiz-prev'){const f=new FormData($('#study-quiz'));if(f.has('answer'))quizAnswers[quizIndex]=Number(f.get('answer'));quizIndex--;showStudyQuiz()}
+  if(action==='quiz-prev'){const f=new FormData($('#study-quiz'));if(f.has('answer'))quizAnswers[quizIndex]=readAnswer(activeCourse.questions[quizIndex],f,'answer');quizIndex--;showStudyQuiz()}
   if(action==='study-results'){
    const rows=await api('learning/'+id+'/results');$('#app').innerHTML=btn('К курсу','study',id,'secondary')+'<h1>Результаты команды</h1>'+rows.map(r=>`<article class="card"><h2>${esc(r.name)}</h2><p>${r.score}% · ${r.passed?'Сдано':'Повторить'} · ${esc(new Date(r.created_at).toLocaleString('ru-RU'))}</p></article>`).join('')+(rows.length?'':'<p>Попыток пока нет.</p>');
   }
