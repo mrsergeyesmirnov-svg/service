@@ -66,7 +66,7 @@ def category(title):
     title = title.lower()
     if 'коф' in title: return 'coffee'
     if any(w in title for w in ('бар', 'коктейл', 'напит', 'чай')): return 'bar'
-    if any(w in title for w in ('сервис', 'обслуж', 'стандарт')): return 'service'
+    if any(w in title for w in ('сервис', 'обслуж', 'стандарт', 'wow', 'вау', 'smile', 'ценност', 'гостеприимств')): return 'service'
     return 'menu'
 
 

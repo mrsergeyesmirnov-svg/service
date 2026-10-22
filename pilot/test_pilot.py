@@ -35,6 +35,11 @@ class Core(unittest.TestCase):
         self.assertTrue(chapters[1]["title"].startswith("2. Involvement"))
         self.assertEqual(chapters[2]["source"],"WOW.pdf, стр. 2")
 
+    def test_wow_smile_pdf_courses_are_service(self):
+        from learning import category
+        for name in ['WOW — ценности MOJO','SMILE — философия гостеприимства','ВАУ — атмосфера']:
+            self.assertEqual(category(name),'service')
+
     def test_multiple_and_ingredient_recall(self):
         from questions import check,public_question
         multi={'type':'multiple','question':'Select','options':['A','B','C'],'correct':[0,2]}
