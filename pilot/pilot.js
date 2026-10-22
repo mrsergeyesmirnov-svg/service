@@ -20,7 +20,20 @@ async function api(path,method='GET',body){
   if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:('Ошибка сервера: '+response.status));
   return data;
 }
-function nav(){const tabs=isManager()?[['assignments','Обзор'],['team','Команда'],['courses','Обучение'],['cases','Кейсы'],['profile','Профиль']]:[['assignments','Мои задания'],['cases','Практика'],['profile','Профиль']];$('#nav').innerHTML=tabs.map(([id,label])=>btn(label,'nav',id,view===id?'active':'')).join('')}
+const navSvg=(name)=>{
+  const paths={
+    assignments:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    team:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M19 14a5 5 0 0 1 2 4v2"/>',
+    courses:'<path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1m0-14c3-2 6-2 9-1v14c-3-1-6-1-9 1V6Z"/>',
+    cases:'<path d="M8 5H5a2 2 0 0 0-2 2v13h15V7a2 2 0 0 0-2-2h-3M8 3h5v4H8zM7 11h7M7 15h9"/>',
+    profile:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'
+  };
+  return '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>';
+};
+function nav(){
+ const tabs=isManager()?[['assignments','Обзор'],['team','Команда'],['courses','Обучение'],['cases','Кейсы'],['profile','Профиль']]:[['assignments','Мой путь'],['cases','Практика'],['profile','Профиль']];
+ $('#nav').innerHTML=tabs.map(([id,label])=>'<button class="nav-item '+(view===id?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(view===id?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>').join('');
+}
 const done=a=>a.questions?a.passed:!!a.acknowledged_at;
 const dateLabel=s=>new Date(s+'T12:00:00').toLocaleDateString('ru-RU');
 function overview(items){const n=items.filter(done).length,p=items.length?Math.round(n/items.length*100):0;return `<div class="card progress-card"><h2>${isManager()?'Назначения выполнены':'Прогресс обучения'}: ${n} из ${items.length}</h2><progress max="100" value="${p}" style="width:100%;accent-color:#25483c"></progress><p class="muted">${p}% · ${items.filter(a=>!done(a)&&new Date(a.deadline+'T23:59:59')<new Date()).length} с истёкшим сроком</p></div>`}
