@@ -9,8 +9,8 @@ function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]
 function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
-function learningDone(c){return c.read===c.chapters&&(!c.questions||c.passed)}
-function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
+function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
+function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав${c.structured?' · карточки блюд':''}</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
@@ -149,7 +149,7 @@ document.addEventListener('click',async e=>{
     renderCourseMap();
   }
   if(action==='course-map-suggest'){
-    const r=courseMapSource.match(/(?:с[тр]?\.?|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+    const r=courseMapSource.match(/(?:с\.|стр\.|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
     if(r){
       const first=Number(r[1]),last=Number(r[2]);
       const proposed=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last)
@@ -204,7 +204,7 @@ async function editCourseDishMap(id){
 }
 function renderCourseMap(){
  if(courseMapId===null)return;
- const range=courseMapSource.match(/(?:с[тр]?\.?|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
+ const range=courseMapSource.match(/(?:с\.|стр\.|страницы?)\s*(\d{1,3})\s*[–—-]\s*(\d{1,3})/i);
  if(range){
   const first=Number(range[1]),last=Number(range[2]);
   const available=courseMapAvailable.filter(c=>c.source_page>=first&&c.source_page<=last);
