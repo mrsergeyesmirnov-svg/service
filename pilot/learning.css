@@ -70,3 +70,10 @@ nav button.nav-item{flex:1;min-width:0}
 .text-chapter-editor .row{align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
 .text-chapter-editor label{display:block;margin:14px 0}
 .text-chapter-editor input{font-size:16px}
+
+/* Manager actions are immediately visible on Home, Courses, and Materials. */
+.academy-manager-tools{background:#fff;border:1px solid #dce8dc;margin:12px 0 20px;padding:20px;border-radius:20px}
+.academy-manager-tools h2{margin:6px 0 10px;color:#233F34;font-size:21px}
+.academy-manager-tools p{font-size:15px;line-height:1.55;color:#54685d}
+.academy-manager-tools .lime-action{display:block;background:#D5ED89;color:#233F34;font-weight:700;min-height:52px;width:100%;margin:16px 0 0}
+.academy-manager-tools .academy-manager-warning{border-top:1px solid #e3ebe5;margin:16px 0 0;padding-top:13px;font-size:14px;color:#705c21}
