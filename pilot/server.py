@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
+from questions import clean_question, public_question, grade_questions
 
 TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
@@ -64,19 +65,13 @@ def course_data(d):
     clean=[]
     for q in qs:
         if not isinstance(q,dict): raise HTTPException(422,'Некорректный вопрос')
-        options=q.get('options'); correct=q.get('correct')
-        if not isinstance(options,list) or not 2<=len(options)<=6 or any(not isinstance(x,str) or not x.strip() or len(x)>1000 for x in options): raise HTTPException(422,'Вопросу нужны 2–6 ответов')
-        if len(set(x.strip().casefold() for x in options))!=len(options): raise HTTPException(422,'Варианты ответов повторяются')
-        if type(correct)!=int or not 0<=correct<len(options): raise HTTPException(422,'Выберите правильный ответ')
-        clean.append(dict(question=text(q,'question',1000),options=options,correct=correct,explanation=text(q,'explanation',3000),source=text(q,'source',1000)))
+        clean.append(clean_question(q,text))
     score=d.get('pass_score',80)
     if type(score)!=int or not 1<=score<=100: raise HTTPException(422,'Порог от 1 до 100')
     return title,kind,body,source,clean,score
 
 def grade(qs, answers):
-    if not isinstance(answers,list) or len(answers)!=len(qs) or any(type(a)!=int or not 0<=a<len(q['options']) for a,q in zip(answers,qs)):
-        raise HTTPException(422,'Ответьте на каждый вопрос')
-    return round(100*sum(a==q['correct'] for a,q in zip(answers,qs))/len(qs))
+    return grade_questions(qs, answers)
 
 @app.middleware('http')
 async def limits(request, call_next):
@@ -254,7 +249,7 @@ def assignment(aid:int,request:Request):
         questions=row['questions']
         row['history']=c.execute('SELECT id,score,passed,created_at FROM attempts WHERE assignment_id=%s ORDER BY id',(aid,)).fetchall()
         row['finished']=any(t['passed'] for t in row['history']) or len(row['history'])>=row['max_attempts']
-        row['questions']=[{'question':q['question'],'options':q['options']} for q in questions]
+        row['questions']=[public_question(q) for q in questions]
         row['review']=questions if row['finished'] else []
         return row
 
