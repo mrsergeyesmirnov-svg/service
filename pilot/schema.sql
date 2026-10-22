@@ -142,3 +142,15 @@ CREATE TABLE IF NOT EXISTS course_text_outline (
 
 -- Limit billed retries of one written practice answer, including network-ambiguous attempts.
 ALTER TABLE dish_practice_attempts ADD COLUMN IF NOT EXISTS tries INTEGER NOT NULL DEFAULT 1;
+
+
+-- Preserve exact quiz rubric for any prior attempt when approved menu cards change.
+ALTER TABLE learning_attempts ADD COLUMN IF NOT EXISTS questions JSONB NOT NULL DEFAULT '[]';
+
+-- Bound billed Yandex SpeechKit requests without retaining guest audio.
+CREATE TABLE IF NOT EXISTS voice_transcriptions (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS voice_transcriptions_daily ON voice_transcriptions(staff_id,created_at);
