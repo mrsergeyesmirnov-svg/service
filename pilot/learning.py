@@ -244,8 +244,6 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                  WHERE m.course_id=%s AND d.id=%s AND d.restaurant=%s
                    AND d.published AND NOT d.archived""",(cid,did,u['restaurant'])).fetchone()
             if not dish: raise HTTPException(404,'Карточка не доступна для практики')
-            if not c.execute('SELECT 1 FROM learning_attempts WHERE staff_id=%s AND course_id=%s AND passed LIMIT 1',(u['id'],cid)).fetchone():
-                raise HTTPException(403,'Сначала изучи курс и сдай тест. Разбор ИИ доступен после теста.')
             if not os.getenv('YANDEX_API_KEY') or not os.getenv('YANDEX_FOLDER_ID'):
                 raise HTTPException(503,'ИИ-тренер пока не подключён. Менеджер должен настроить Yandex AI Studio.')
             # Lock this user during reservation so parallel requests cannot exceed quota.
