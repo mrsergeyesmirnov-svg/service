@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from cases_api import make_router
+from learning import make_learning_router
 
 TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
@@ -87,6 +88,7 @@ async def limits(request, call_next):
     return response
 
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
+app.include_router(make_learning_router(lambda: db(), require, manager, scope, grade, audit))
 
 @app.get('/api/health')
 def health():
@@ -300,8 +302,11 @@ def index():return FileResponse(BASE/'index.html')
 def script():return FileResponse(BASE/'pilot.js',media_type='application/javascript')
 @app.get('/pilot/pilot.css')
 def css():return FileResponse(BASE/'pilot.css',media_type='text/css')
+@app.get('/pilot/learning.js')
+def learning_script():return FileResponse(BASE/'learning.js',media_type='application/javascript')
 
 if __name__=='__main__':
     with db() as c:c.execute((BASE/'schema.sql').read_text())
     import uvicorn
     uvicorn.run(app,host='0.0.0.0',port=8000,access_log=False)
+

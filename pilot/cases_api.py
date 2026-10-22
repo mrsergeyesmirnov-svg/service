@@ -40,6 +40,7 @@ def public_case(row, managerial=False):
     obj = {k: row[k] for k in fields}
     if managerial:
         obj["criteria"] = row["criteria"]
+        obj["archived"] = row["archived"]
     return obj
 
 def interpret(raw):
@@ -107,7 +108,7 @@ def make_router(db, require, manager, scope, audit):
         with db() as c:
             u=require(c,request); admin=u["role"] in ("manager","local")
             rows=c.execute(
-                "SELECT * FROM case_scenarios WHERE restaurant=%s AND (%s OR published) ORDER BY id DESC",
+                "SELECT * FROM case_scenarios WHERE restaurant=%s AND (%s OR (published AND NOT archived)) ORDER BY id DESC",
                 (u["restaurant"],admin)).fetchall()
             return [public_case(row,admin) for row in rows]
 
@@ -177,8 +178,22 @@ def make_router(db, require, manager, scope, audit):
             row=c.execute("SELECT * FROM case_scenarios WHERE id=%s FOR UPDATE",(case_id,)).fetchone()
             if not row: raise HTTPException(404,"Кейс не найден")
             scope(u,row["restaurant"])
+            if row["archived"]: raise HTTPException(409,"Архивную версию нельзя публиковать. Создайте новую.")
             c.execute("UPDATE case_scenarios SET published=true WHERE id=%s",(case_id,))
             audit(c,u["id"],"case:published",case_id)
+        return {"ok":True}
+
+    @router.post("/{case_id}/archive")
+    async def archive_case(case_id:int,request:Request):
+        d=await request.json()
+        if d.get("confirmed") is not True:raise HTTPException(422,"Подтвердите архивирование версии")
+        with db() as c:
+            u=require(c,request);manager(u)
+            row=c.execute("SELECT * FROM case_scenarios WHERE id=%s FOR UPDATE",(case_id,)).fetchone()
+            if not row:raise HTTPException(404,"Кейс не найден")
+            scope(u,row["restaurant"])
+            c.execute("UPDATE case_scenarios SET archived=true WHERE id=%s",(case_id,))
+            audit(c,u["id"],"case:archive",case_id)
         return {"ok":True}
 
     @router.get("/{case_id}/history")
@@ -213,7 +228,7 @@ def make_router(db, require, manager, scope, audit):
             raise HTTPException(422,"Не указывай телефоны, адреса почты или данные реальных гостей")
         with db() as c:
             u=require(c,request)
-            row=c.execute("SELECT * FROM case_scenarios WHERE id=%s AND restaurant=%s AND published",
+            row=c.execute("SELECT * FROM case_scenarios WHERE id=%s AND restaurant=%s AND published AND NOT archived",
                           (case_id,u["restaurant"])).fetchone()
             if not row:raise HTTPException(404,"Кейс не опубликован")
             # Hold a per-person transaction lock through the provider call and insert.
