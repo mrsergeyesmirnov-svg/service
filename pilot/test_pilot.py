@@ -95,6 +95,25 @@ class Integration(unittest.TestCase):
         self.assertTrue(chapter['has_photo'])
         self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',json={
             'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
+        with patch.dict(os.environ,{'YANDEX_API_KEY':'synthetic-key','YANDEX_FOLDER_ID':'synthetic-folder'}):
+            with patch('learning.evaluate_with_yandex',return_value={
+                'summary':'Useful effort','strengths':'Checked ingredients',
+                'improvements':'Clarify guest preference','next_step':'Repeat briefly'}):
+                req={'dish_id':did,'request_id':str(uuid.uuid4()),
+                     'answer':'I will explain the checked composition and ask what the guest likes.'}
+                practice=self.client.post(f'/api/learning/{cid}/dish-practice',json=req,headers=s)
+                self.assertEqual(practice.status_code,200,practice.text)
+                self.assertEqual(practice.json()['summary'],'Useful effort')
+                retry=self.client.post(f'/api/learning/{cid}/dish-practice',json=req,headers=s)
+                self.assertEqual(retry.status_code,200,retry.text)
+                records=self.client.get(f'/api/learning/{cid}/dish-practice/{did}',headers=s)
+                self.assertEqual(len(records.json()),1)
+                self.assertEqual(len(self.client.get(f'/api/learning/{cid}/dish-practice/{did}',headers=self.auth(102)).json()),0)
+                self.assertEqual(self.client.post(f'/api/learning/{cid}/dish-practice',
+                    json={**req,'request_id':str(uuid.uuid4()),
+                          'answer':'Please contact example@example.com before bringing this dish.'},
+                    headers=s).status_code,422)
+                self.assertEqual(self.client.post(f'/api/learning/{cid}/dish-practice',json=req,headers=local).status_code,404)
         marked=self.client.post(f'/api/learning/{cid}/read',json={'chapter_id':chapter['id']},headers=s)
         self.assertEqual(marked.status_code,200,marked.text)
         attempt=self.client.post(f'/api/learning/{cid}/submit',json={
