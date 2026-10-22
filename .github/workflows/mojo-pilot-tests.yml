@@ -42,6 +42,7 @@ jobs:
           node --check pilot/pilot.js
           node --check pilot/dishes.js
           node --check pilot/learning.js
+          (cd pilot && node test_admin_nav.cjs)
           node --check pilot/voice.js
           bash -n pilot/update-pilot-only.sh
           bash -n pilot/enable-dish-upload.sh
