@@ -131,3 +131,11 @@ CREATE TABLE IF NOT EXISTS dish_practice_attempts (
  UNIQUE(staff_id,course_id,dish_id,request_id)
 );
 CREATE INDEX IF NOT EXISTS dish_practice_daily ON dish_practice_attempts(staff_id,created_at);
+
+
+-- Manager-authored structured chapters for theory of coffee, service and other non-dish courses.
+CREATE TABLE IF NOT EXISTS course_text_outline (
+ course_id BIGINT PRIMARY KEY REFERENCES courses(id),
+ chapters JSONB NOT NULL,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
