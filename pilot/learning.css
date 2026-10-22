@@ -65,3 +65,8 @@ nav button.nav-item{flex:1;min-width:0}
 .lesson-ai .result-card{margin:18px 0 0}
 .lesson-ai .result-card h3{color:var(--forest);margin:16px 0 6px}
 .lesson-ai #dish-practice-state{font-size:14px;color:#617469}
+
+.text-chapter-editor textarea{font-size:16px;line-height:1.6;width:100%;min-height:170px}
+.text-chapter-editor .row{align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.text-chapter-editor label{display:block;margin:14px 0}
+.text-chapter-editor input{font-size:16px}
