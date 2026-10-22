@@ -40,6 +40,8 @@ jobs:
         working-directory: .
         run: |
           node --check pilot/pilot.js
+          node --check pilot/dishes.js
           bash -n pilot/update-pilot-only.sh
+          bash -n pilot/enable-dish-upload.sh
       - name: Unit and isolated PostgreSQL integration tests
-        run: python -m unittest test_cases test_pilot
+        run: python -m unittest test_dishes test_cases test_pilot
