@@ -532,7 +532,7 @@ class Integration(unittest.TestCase):
         approved=self.client.post('/api/team/401/approve',headers=manager)
         self.assertEqual(approved.status_code,200,approved.text)
         self.assertFalse(approved.json()['already_approved'])
-        self.assertTrue(self.client.post('/api/login',json={'initData':signed(401)}).ok)
+        self.assertEqual(self.client.post('/api/login',json={'initData':signed(401)}).status_code,200)
         again=self.client.post('/api/team/401/approve',headers=manager)
         self.assertTrue(again.json()['already_approved'])
         with server.db() as c:
