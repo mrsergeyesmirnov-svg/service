@@ -1,10 +1,13 @@
 """Self-study of approved immutable materials, separate from mandatory exams."""
 import hashlib
+import os
 import re
 import uuid
 from questions import public_question, check
 from dish_lessons import dish_chapters, map_details, save_mapping
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
+from cases_api import evaluate_with_yandex, PRIVATE_DATA
 from psycopg.types.json import Jsonb
 
 
@@ -135,6 +138,87 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             save_mapping(c,r,d.get('dish_ids'))
             audit(c,u['id'],'learning:dish-map',cid)
             return {'ok':True,'dish_ids':map_details(c,cid)}
+
+
+    @router.post('/{cid}/dish-practice')
+    async def practice_dish(cid:int,request:Request):
+        """Optional private AI coaching; never sets pass_score or admission."""
+        d=await request.json()
+        if not isinstance(d,dict): raise HTTPException(422,'Неверный формат ответа')
+        try:
+            rid=uuid.UUID(d['request_id'])
+        except (KeyError,TypeError,ValueError,AttributeError):
+            raise HTTPException(422,'Некорректный номер запроса')
+        did=d.get('dish_id')
+        answer=d.get('answer','')
+        if type(did)!=int or not isinstance(answer,str) or not 40<=len(answer)<=1600:
+            raise HTTPException(422,'Опиши действия и слова гостю (40–1600 символов)')
+        if PRIVATE_DATA.search(answer):
+            raise HTTPException(422,'Не указывай телефон, электронную почту или данные реального гостя')
+        if not os.getenv('YANDEX_API_KEY') or not os.getenv('YANDEX_FOLDER_ID'):
+            raise HTTPException(503,'ИИ-тренер пока не подключён. Менеджер должен настроить Yandex AI Studio.')
+        with db() as c:
+            u=require(c,request);course_row=course(c,u,cid)
+            # Only currently published cards assigned to this exact course are eligible.
+            dish=c.execute("""SELECT d.title,d.ingredients,d.description,d.source_name,d.source_page
+                 FROM course_dishes m JOIN dish_cards d ON d.id=m.dish_id
+                 WHERE m.course_id=%s AND d.id=%s AND d.restaurant=%s
+                   AND d.published AND NOT d.archived""",(cid,did,u['restaurant'])).fetchone()
+            if not dish: raise HTTPException(404,'Карточка не доступна для практики')
+            # Lock this user during reservation so parallel requests cannot exceed quota.
+            c.execute('SELECT id FROM staff WHERE id=%s FOR UPDATE',(u['id'],))
+            existing=c.execute("""SELECT status,feedback FROM dish_practice_attempts
+                  WHERE staff_id=%s AND course_id=%s AND dish_id=%s AND request_id=%s""",
+                 (u['id'],cid,did,rid)).fetchone()
+            if existing:
+                if existing['status']=='done':return existing['feedback']
+                if existing['status']=='pending':raise HTTPException(409,'Разбор уже обрабатывается')
+                raise HTTPException(503,'Предыдущий разбор не удался. Попробуй отправить ответ снова.')
+            used=c.execute("""SELECT count(*) AS n FROM dish_practice_attempts
+                 WHERE staff_id=%s AND created_at>now()-interval '24 hours'""",(u['id'],)).fetchone()['n']
+            if used>=5:raise HTTPException(429,'Не больше пяти ИИ-разборов за 24 часа')
+            c.execute("""INSERT INTO dish_practice_attempts(staff_id,course_id,dish_id,request_id,answer)
+                 VALUES(%s,%s,%s,%s,%s)""",(u['id'],cid,did,rid,answer))
+            staff_id=u['id']
+        reference=(
+            'Утверждённый состав: '+', '.join(dish['ingredients'])+
+            '. Утверждённое описание и подача: '+dish['description']
+        )[:2500]
+        case={
+            'competency':'Знание меню MOJO и проактивная забота о госте',
+            'action':'Правдиво и понятно презентовать блюдо, уточнять ограничения гостя',
+            'scenario':'Гость попросил кратко презентовать «'+dish['title']+'». ',
+            'criteria':[
+                'Сравни ответ ТОЛЬКО с утверждённым материалом: '+reference,
+                'Проверь, что важные ингредиенты и особенности подачи переданы точно',
+                'Не одобряй выдуманные ингредиенты, неподтверждённые замены и обещания безопасности при аллергии',
+                'Дай короткий полезный комментарий, как лучше презентовать блюдо'
+            ]
+        }
+        try:
+            feedback=await run_in_threadpool(evaluate_with_yandex,case,answer)
+        except HTTPException:
+            with db() as c:
+                c.execute("""UPDATE dish_practice_attempts SET status='failed',updated_at=now()
+                    WHERE staff_id=%s AND course_id=%s AND dish_id=%s AND request_id=%s
+                    AND status='pending'""",(staff_id,cid,did,rid))
+            raise
+        with db() as c:
+            saved=c.execute("""UPDATE dish_practice_attempts SET status='done',
+                   feedback=%s,updated_at=now() WHERE staff_id=%s AND course_id=%s
+                   AND dish_id=%s AND request_id=%s AND status='pending' RETURNING id""",
+                   (Jsonb(feedback),staff_id,cid,did,rid)).fetchone()
+            if saved:audit(c,staff_id,'learning:dish-practice',saved['id'])
+        return feedback
+
+    @router.get('/{cid}/dish-practice/{did}')
+    def practice_history(cid:int,did:int,request:Request):
+        with db() as c:
+            u=require(c,request);course(c,u,cid)
+            return c.execute("""SELECT id,answer,feedback,created_at
+                  FROM dish_practice_attempts WHERE staff_id=%s AND course_id=%s
+                  AND dish_id=%s AND status='done' ORDER BY id DESC LIMIT 5""",
+                 (u['id'],cid,did)).fetchall()
 
     @router.get('/{cid}/results')
     def results(cid: int, request: Request):
