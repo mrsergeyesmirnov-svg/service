@@ -238,18 +238,29 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                 raise HTTPException(503,'ИИ-тренер пока не подключён. Менеджер должен настроить Yandex AI Studio.')
             # Lock this user during reservation so parallel requests cannot exceed quota.
             c.execute('SELECT id FROM staff WHERE id=%s FOR UPDATE',(u['id'],))
-            existing=c.execute("""SELECT status,feedback FROM dish_practice_attempts
+            existing=c.execute("""SELECT status,feedback,answer,tries,
+                         updated_at < now()-interval '75 seconds' AS stale
+                  FROM dish_practice_attempts
                   WHERE staff_id=%s AND course_id=%s AND dish_id=%s AND request_id=%s""",
                  (u['id'],cid,did,rid)).fetchone()
-            if existing:
-                if existing['status']=='done':return existing['feedback']
-                if existing['status']=='pending':raise HTTPException(409,'Разбор уже обрабатывается')
-                raise HTTPException(503,'Предыдущий разбор не удался. Попробуй отправить ответ снова.')
+            if existing and existing['status']=='done':
+                return existing['feedback']
+            if existing and existing['answer']!=answer:
+                raise HTTPException(409,'Для изменённого текста начни новую попытку')
+            if existing and existing['status']=='pending' and not existing['stale']:
+                raise HTTPException(409,'Разбор ещё обрабатывается. Повтори через минуту.')
+            if existing and existing['tries']>=2:
+                raise HTTPException(429,'Этот разбор уже отправлялся дважды. Начни новую попытку позже.')
             used=c.execute("""SELECT count(*) AS n FROM dish_practice_attempts
                  WHERE staff_id=%s AND created_at>now()-interval '24 hours'""",(u['id'],)).fetchone()['n']
-            if used>=5:raise HTTPException(429,'Не больше пяти ИИ-разборов за 24 часа')
-            c.execute("""INSERT INTO dish_practice_attempts(staff_id,course_id,dish_id,request_id,answer)
-                 VALUES(%s,%s,%s,%s,%s)""",(u['id'],cid,did,rid,answer))
+            if used>=5 and not existing:raise HTTPException(429,'Не больше пяти ИИ-разборов за 24 часа')
+            if existing:
+                c.execute("""UPDATE dish_practice_attempts SET status='pending',tries=tries+1,
+                      updated_at=now() WHERE staff_id=%s AND course_id=%s
+                      AND dish_id=%s AND request_id=%s""",(u['id'],cid,did,rid))
+            else:
+                c.execute("""INSERT INTO dish_practice_attempts(staff_id,course_id,dish_id,request_id,answer)
+                    VALUES(%s,%s,%s,%s,%s)""",(u['id'],cid,did,rid,answer))
             staff_id=u['id']
         reference=(
             'Утверждённый состав: '+', '.join(dish['ingredients'])+
