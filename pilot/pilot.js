@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let token='',user,view='assignments',cache=[],draft;
+let token='',user,view='home',cache=[],draft;
 const roles={trainee:'Стажёр',waiter:'Официант',manager:'Менеджер по сервису',local:'Менеджер точки'};
 const isManager=()=>['manager','local'].includes(user?.role);
 let caseCache=[];
@@ -21,6 +21,7 @@ async function api(path,method='GET',body){
   return data;
 }
 const navSvg=(name)=>{
+  name=({home:'assignments',catalog:'courses'})[name]||name;
   const paths={
     assignments:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     team:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M19 14a5 5 0 0 1 2 4v2"/>',
@@ -31,7 +32,7 @@ const navSvg=(name)=>{
   return '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>';
 };
 function nav(){
- const tabs=isManager()?[['assignments','Обзор'],['team','Команда'],['courses','Обучение'],['cases','Кейсы'],['profile','Профиль']]:[['assignments','Мой путь'],['cases','Практика'],['profile','Профиль']];
+ const tabs=isManager()?[['home','Мой путь'],['team','Команда'],['catalog','Курсы'],['cases','Практика'],['profile','Профиль']]:[['home','Мой путь'],['catalog','Курсы'],['assignments','Задания'],['cases','Практика'],['profile','Профиль']];
  $('#nav').innerHTML=tabs.map(([id,label])=>'<button class="nav-item '+(view===id?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(view===id?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>').join('');
 }
 const done=a=>a.questions?a.passed:!!a.acknowledged_at;
@@ -39,6 +40,7 @@ const dateLabel=s=>new Date(s+'T12:00:00').toLocaleDateString('ru-RU');
 function overview(items){const n=items.filter(done).length,p=items.length?Math.round(n/items.length*100):0;return `<div class="card progress-card"><h2>${isManager()?'Назначения выполнены':'Прогресс обучения'}: ${n} из ${items.length}</h2><progress max="100" value="${p}" style="width:100%;accent-color:#25483c"></progress><p class="muted">${p}% · ${items.filter(a=>!done(a)&&new Date(a.deadline+'T23:59:59')<new Date()).length} с истёкшим сроком</p></div>`}
 const status=a=>a.questions?(a.passed?'Тест сдан':a.attempts?'Нужна пересдача':a.acknowledged_at?'Можно сдавать тест':'Не начато'):(a.acknowledged_at?'Ознакомлен':'Не начато');
 async function render(){nav();const root=$('#app');
+if(view==='home'||view==='catalog'){await learningPage(view);return}
 if(view==='cases'){await casesPage();return}
 if(view==='profile'){root.innerHTML=`<h1>${esc(user.name)}</h1><div class="card"><p>${esc(roles[user.role])} · ${esc(user.restaurant)}</p><p>Телефон: ${esc(user.phone||'не указан')}</p><p>Чтобы добавить номер, отправьте боту /phone.</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`;return}
 if(view==='assignments'){cache=await api('assignments');root.innerHTML=`<h1>${isManager()?'Прохождение обучения':'Мои задания'}</h1>`+overview(cache)+(cache.length?cache.map(a=>`<article class="card"><span class="badge">${esc(status(a))}</span><h2>${esc(a.title)}</h2>${isManager()?`<p>${esc(a.name)}</p>`:''}<p class="muted">До ${esc(dateLabel(a.deadline))} · попыток ${a.attempts}/${a.max_attempts}${a.best_score!==null?' · лучший результат '+a.best_score+'%':''}</p>${isManager()?`<p class="muted">Уведомление в Telegram: ${esc(({sent:'отправлено',pending:'в очереди',failed:'не доставлено — проверьте, открыт ли чат с ботом'})[a.notification]||'нет')}</p>${btn('Посмотреть ответы','results',a.id)}${a.staff_id===user.id?btn('Пройти самому','lesson',a.id,'secondary'):''}`:btn('Открыть','lesson',a.id)}</article>`).join(''):'<div class="card">Пока нет назначенных материалов.</div>');return}
