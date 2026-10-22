@@ -41,7 +41,9 @@ jobs:
         run: |
           node --check pilot/pilot.js
           node --check pilot/dishes.js
+          node --check pilot/learning.js
           bash -n pilot/update-pilot-only.sh
           bash -n pilot/enable-dish-upload.sh
+          bash -n pilot/configure-ai.sh
       - name: Unit and isolated PostgreSQL integration tests
         run: python -m unittest test_dishes test_cases test_pilot
