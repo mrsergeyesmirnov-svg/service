@@ -1,5 +1,6 @@
 """One polling worker, persistent update offset and notification outbox."""
 import json, time, urllib.request, urllib.error
+from threading import Thread
 from datetime import datetime, timezone, timedelta
 from server import db, TOKEN, OWNER, URL, audit
 
@@ -9,7 +10,7 @@ class TelegramError(Exception):
 def telegram(method,**data):
     req=urllib.request.Request(f'https://api.telegram.org/bot{TOKEN}/{method}',data=json.dumps(data).encode(),headers={'Content-Type':'application/json'})
     try:
-        with urllib.request.urlopen(req,timeout=40) as r:out=json.load(r)
+        with urllib.request.urlopen(req,timeout=10 if method=='getUpdates' else 15) as r:out=json.load(r)
     except urllib.error.HTTPError as e:
         try: out=json.load(e)
         except Exception:out={}
@@ -54,7 +55,7 @@ def deliver():
     # after Telegram accepted a message can produce a duplicate on retry.
     with db() as c:
         row=c.execute("SELECT * FROM outbox WHERE state='pending' AND next_try<=now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1").fetchone()
-        if not row:return
+        if not row:return False
         link=URL+(f'?assignment={row["assignment_id"]}' if row['assignment_id'] else '')
         try:
             telegram('sendMessage',chat_id=row['recipient'],text=row['message'],reply_markup={'inline_keyboard':[[{'text':'Открыть Академию','web_app':{'url':link}}]]})
@@ -64,12 +65,23 @@ def deliver():
             status='failed' if e.code in (400,403) or tries>=10 else 'pending'
             delay=max(e.retry,min(3600,30*2**min(tries,7)))
             c.execute('UPDATE outbox SET state=%s,tries=%s,next_try=%s,error=%s WHERE id=%s',(status,tries,datetime.now(timezone.utc)+timedelta(seconds=delay),f'Telegram {e.code}',row['id']))
+        return True
+
+def deliver_loop():
+    # Sending notifications never blocks receiving /start or committing polling offsets.
+    while True:
+        try:
+            if not deliver():time.sleep(1)
+        except Exception as exc:
+            print('Delivery retry: '+type(exc).__name__,flush=True)
+            time.sleep(3)
 
 if __name__=='__main__':
     if not TOKEN or not OWNER:raise SystemExit('Telegram not configured; worker disabled')
     identity=telegram('getMe')
     if identity.get('username','').lower()!='skill_mojo_bot':raise SystemExit('Wrong bot: expected skill_mojo_bot')
     if telegram('getWebhookInfo').get('url'):raise SystemExit('Existing webhook detected; not changing it automatically')
+    Thread(target=deliver_loop,daemon=True,name='academy-outbox').start()
     print('Worker ready',flush=True)
     while True:
         try:
@@ -80,7 +92,6 @@ if __name__=='__main__':
             for update in updates:
                 process(update)
                 with db() as c:c.execute("INSERT INTO settings VALUES('telegram_offset',%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(update['update_id']+1),))
-            for _ in range(10):deliver()
         except Exception as e:
             # Never log exception text: HTTP errors may contain the bot token.
             print('Worker retry: '+type(e).__name__+(f' code={e.code}' if isinstance(e,TelegramError) else ''),flush=True);time.sleep(5)

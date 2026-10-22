@@ -27,6 +27,16 @@ class Core(unittest.TestCase):
         with self.assertRaises(server.HTTPException):check(multi,[True])
         with self.assertRaises(server.HTTPException):check(multi,[0,0])
 
+    def test_telegram_network_timeouts_are_bounded(self):
+        from unittest.mock import MagicMock
+        fake=MagicMock()
+        fake.__enter__.return_value.read.return_value=b'{"ok":true,"result":[]}'
+        with patch.object(worker.urllib.request,'urlopen',return_value=fake) as call:
+            self.assertEqual(worker.telegram('getUpdates',offset=1,timeout=2),[])
+            self.assertEqual(call.call_args.kwargs['timeout'],10)
+            worker.telegram('sendMessage',chat_id=123,text='ok')
+            self.assertEqual(call.call_args.kwargs['timeout'],15)
+
     def test_auth(self):
         self.assertEqual(server.validate_init(signed(),'test-token')['id'],101)
         for raw in [signed(age=4000),signed(age=-100),signed()+'&user=bad',signed().replace('101','102')]:
