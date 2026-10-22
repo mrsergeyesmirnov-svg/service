@@ -46,7 +46,13 @@ function chapterBody(p){
  '<p class="muted">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>'+
  '<section class="lesson-practice"><strong>Проверь себя</strong>'+
  '<p>Сможешь без подсказок назвать основные ингредиенты и объяснить это блюдо гостю за 20–30 секунд?</p>'+
- '<p class="muted">Затем переходи к следующей главе. Итоговый тест проверит знания без подсказок.</p></section>';
+ '<p class="muted">После изучения можно потренировать презентацию. Итоговый тест проверит знания без подсказок.</p></section>'+
+ '<form id="dish-practice-form" class="lesson-ai"><h2>Презентуй блюдо гостю</h2>'+
+ '<label>Представь, что гость спрашивает про это блюдо. Что ты скажешь?'+
+ '<textarea name="answer" required minlength="40" maxlength="1600" rows="5" placeholder="Начни со своих слов, без подсказок…"></textarea></label>'+
+ '<p class="muted">Не указывай персональные данные гостей. Ответ отправится в Yandex AI Studio для учебного разбора — это не экзамен и не допуск к смене.</p>'+
+ '<button type="submit">Получить разбор ИИ</button><p id="dish-practice-state" role="status"></p>'+
+ '<div id="dish-practice-feedback" aria-live="polite"></div></form>';
 }
 function showChapter(){
  const c=activeCourse;
@@ -76,8 +82,33 @@ function showChapter(){
  ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
  '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+
  (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
- if(p.kind==='dish')showDishPhotos();
+ if(p.kind==='dish'){showDishPhotos();bindDishPractice(c.id,p.dish_id)}
  window.scrollTo(0,0);
+}
+function bindDishPractice(courseId,dishId){
+ const form=$('#dish-practice-form');if(!form)return;
+ form.onsubmit=async e=>{
+  e.preventDefault();const button=form.querySelector('[type="submit"]');
+  const answer=form.elements.namedItem('answer').value;
+  if(answer.trim().length<40){error(Error('Напиши не менее 40 символов'));return}
+  const state=$('#dish-practice-state');button.disabled=true;
+  state.textContent='ИИ проверяет твой ответ…';
+  try{
+   const f=await api('learning/'+courseId+'/dish-practice','POST',{
+    dish_id:dishId,request_id:crypto.randomUUID(),answer
+   });
+   $('#dish-practice-feedback').innerHTML='<div class="card result-card">'+
+    '<h3>Твой разбор</h3><p>'+esc(f.summary)+'</p>'+
+    '<h3>Что получилось</h3><p>'+esc(f.strengths)+'</p>'+
+    '<h3>Что улучшить</h3><p>'+esc(f.improvements)+'</p>'+
+    '<h3>Следующий шаг</h3><p>'+esc(f.next_step)+'</p>'+
+    '<p class="muted">ИИ даёт учебную обратную связь. Допуск к работе подтверждает руководитель.</p></div>';
+   state.textContent='Разбор сохранён в твоём профиле.';
+  }catch(err){
+   state.textContent='Ответ не оценён. Он остался в поле — можно повторить позже.';
+   error(err);
+  }finally{button.disabled=false}
+ };
 }
 function showStudyQuiz(){
  const c=activeCourse,q=c.questions[quizIndex];
