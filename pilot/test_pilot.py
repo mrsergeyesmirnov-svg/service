@@ -498,6 +498,35 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=m).status_code,409)
         self.assertEqual(len(self.client.get(url+'/results',headers=m).json()),5)
 
+    def test_forwarded_invite_needs_explicit_manager_approval(self):
+        manager=self.auth(999)
+        outside=self.auth(103)
+        token=self.client.post('/api/invites',json={'role':'trainee'},headers=manager).json()['url'].split('=')[1]
+        msg=lambda uid,cmd:{'update_id':uid,'message':{'chat':{'id':uid,'type':'private'},
+             'from':{'id':uid,'first_name':'Pending User'},'text':cmd}}
+        worker.process(msg(401,'/start '+token))
+        pending=self.client.post('/api/login',json={'initData':signed(401)})
+        self.assertEqual(pending.status_code,403)
+        self.assertIn('одобрения',pending.json()['detail'])
+        with server.db() as c:
+            staff=c.execute('SELECT role,active,bot_started FROM staff WHERE id=401').fetchone()
+            self.assertEqual(staff['role'],'trainee')
+            self.assertFalse(staff['active'])
+            self.assertTrue(staff['bot_started'])
+        self.assertEqual(self.client.post('/api/team/401/approve',headers=outside).status_code,403)
+        self.assertEqual(self.client.post('/api/team/401/approve').status_code,401)
+        team=self.client.get('/api/team',headers=manager).json()
+        self.assertTrue(any(s['id']==401 and not s['active'] for s in team))
+        approved=self.client.post('/api/team/401/approve',headers=manager)
+        self.assertEqual(approved.status_code,200,approved.text)
+        self.assertFalse(approved.json()['already_approved'])
+        self.assertTrue(self.client.post('/api/login',json={'initData':signed(401)}).ok)
+        again=self.client.post('/api/team/401/approve',headers=manager)
+        self.assertTrue(again.json()['already_approved'])
+        with server.db() as c:
+            sent=c.execute("SELECT count(*) n FROM outbox WHERE dedupe='approval:401'").fetchone()['n']
+            self.assertEqual(sent,1)
+
     def test_invite_contact_and_permissions(self):
         m=self.auth(999)
         invite=self.client.post('/api/invites',json={'role':'waiter'},headers=m).json()['url'].split('=')[1]
