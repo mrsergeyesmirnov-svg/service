@@ -139,3 +139,6 @@ CREATE TABLE IF NOT EXISTS course_text_outline (
  chapters JSONB NOT NULL,
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Limit billed retries of one written practice answer, including network-ambiguous attempts.
+ALTER TABLE dish_practice_attempts ADD COLUMN IF NOT EXISTS tries INTEGER NOT NULL DEFAULT 1;
