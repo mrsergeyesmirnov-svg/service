@@ -64,3 +64,5 @@ CREATE TABLE IF NOT EXISTS case_attempts (
  UNIQUE(case_id,staff_id,request_id)
 );
 CREATE INDEX IF NOT EXISTS case_attempts_staff ON case_attempts(staff_id,created_at);
+-- Published scenarios can be retired without deleting employee attempt history.
+ALTER TABLE case_scenarios ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
