@@ -45,15 +45,8 @@ function chapterBody(p){
   '<p class="muted">Ингредиенты проверяются менеджером.</p>')+
  '<h2>Особенности и подача</h2><div class="body lesson-source">'+esc(p.description||'Описание блюда готовится.')+'</div>'+
  '<p class="muted">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>'+
- '<section class="lesson-practice"><strong>Проверь себя</strong>'+
- '<p>Сможешь без подсказок назвать основные ингредиенты и объяснить это блюдо гостю за 20–30 секунд?</p>'+
- '<p class="muted">После изучения можно потренировать презентацию. Итоговый тест проверит знания без подсказок.</p></section>'+
- '<form id="dish-practice-form" class="lesson-ai"><h2>Презентуй блюдо гостю</h2>'+
- '<label>Представь, что гость спрашивает про это блюдо. Что ты скажешь?'+
- '<textarea name="answer" required minlength="40" maxlength="1600" rows="5" placeholder="Начни со своих слов, без подсказок…"></textarea></label>'+
- '<p class="muted">Не указывай персональные данные гостей. Ответ отправится в Yandex AI Studio для учебного разбора — это не экзамен и не допуск к смене.</p>'+
- '<button type="submit">Получить разбор ИИ</button><p id="dish-practice-state" role="status"></p>'+
- '<div id="dish-practice-feedback" aria-live="polite"></div></form>';
+ '<p class="muted">После изучения глав сначала пройди тест. Затем можно презентовать блюдо гостю голосом или текстом и получить разбор ИИ.</p>';
+
 }
 function showChapter(){
  const c=activeCourse;
@@ -81,9 +74,32 @@ function showChapter(){
  '<section class="card"><h2>Мои результаты</h2>'+
  (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
  ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
- '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+
+ '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+ (c.history.length&&c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
  (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
- if(p.kind==='dish'){showDishPhotos();bindDishPractice(c.id,p.dish_id)}
+ if(p.kind==='dish')showDishPhotos();
+ window.scrollTo(0,0);
+}
+function showPostTestPractice(dishId){
+ const c=activeCourse, cards=c.chapters.filter(x=>x.kind==='dish');
+ if(!cards.length){showChapter();return}
+ const selected=cards.find(x=>x.dish_id===dishId)||cards[0];
+ const options=cards.map(x=>'<option value="'+x.dish_id+'"'+(x.dish_id===selected.dish_id?' selected':'')+'>'+esc(x.title)+'</option>').join('');
+ $('#app').innerHTML=studyHeader('Практика · после теста')+
+ '<section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
+ '<h1>Презентуй блюдо гостю</h1>'+
+ '<p class="muted">Представь, что гость спрашивает об одном из блюд MOJO. Ты уже изучил материал и прошёл тест. Сейчас попробуй объяснить его своими словами, как за столом.</p>'+
+ '<label>Выбери блюдо для презентации<select id="practice-dish-select">'+options+'</select></label>'+
+ '<form id="dish-practice-form"><label>Что скажешь гостю?'+
+ '<textarea name="answer" required minlength="40" maxlength="1600" rows="5" placeholder="Начни со своих слов…"></textarea></label>'+
+ voiceInputMarkup()+
+ '<p class="muted">Не указывай персональные данные гостей. ИИ проверяет содержание по утверждённой карточке и даёт рекомендации. Допуск к смене подтверждает руководитель.</p>'+
+ '<button class="lime-action" type="submit">Получить разбор ИИ →</button>'+
+ '<p id="dish-practice-state" role="status"></p>'+
+ '<div id="dish-practice-feedback" aria-live="polite"></div></form></section>'+
+ btn('Вернуться к курсу','study',c.id,'secondary');
+ $('#practice-dish-select').onchange=e=>showPostTestPractice(Number(e.target.value));
+ bindDishPractice(c.id,selected.dish_id);
+ bindVoiceInput($('#dish-practice-form'));
  window.scrollTo(0,0);
 }
 function bindDishPractice(courseId,dishId){
@@ -127,13 +143,14 @@ function showStudyQuiz(){
  window.scrollTo(0,0);
 }
 function showStudyResult(r){
- $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section><h2>Разбор ответов</h2>${r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')}${btn('К курсам','nav','catalog','secondary')}`;
+ activeCourse.history.unshift({score:r.score,passed:r.passed,created_at:new Date().toISOString()});
+ $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section>${activeCourse.chapters.some(x=>x.kind==='dish')?'<section class="card"><h2>Следующий этап — практика</h2><p>Презентуй блюдо гостю голосом или текстом. ИИ оценит содержание и подскажет, что улучшить.</p>'+btn('Практика с ИИ →','study-practice','','lime-action')+'</section>':''}<h2>Разбор ответов</h2>${r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')}${btn('К курсам','nav','catalog','secondary')}`;
  window.scrollTo(0,0);
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
+ if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='course-text-editor')await editTextChapters(Number(id));
@@ -175,6 +192,7 @@ document.addEventListener('click',async e=>{
   }
   if(action==='course-map-save')await saveCourseDishMap();
   if(action==='study')await study(Number(id));
+  if(action==='study-practice')showPostTestPractice(Number(id)||undefined);
   if(action==='direction'){view='catalog';await render();filterCourses(id)}
   if(action==='filter')filterCourses(id);
   if(action==='chapter-prev'){chapterIndex--;showChapter()}

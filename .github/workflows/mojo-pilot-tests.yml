@@ -42,8 +42,10 @@ jobs:
           node --check pilot/pilot.js
           node --check pilot/dishes.js
           node --check pilot/learning.js
+          node --check pilot/voice.js
           bash -n pilot/update-pilot-only.sh
           bash -n pilot/enable-dish-upload.sh
+          bash -n pilot/enable-voice-upload.sh
           bash -n pilot/configure-ai.sh
           bash -n pilot/update-bot-only.sh
       - name: Unit and isolated PostgreSQL integration tests

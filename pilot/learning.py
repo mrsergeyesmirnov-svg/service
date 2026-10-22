@@ -5,6 +5,7 @@ import re
 import uuid
 from questions import public_question, check
 from dish_lessons import dish_chapters, map_details, save_mapping
+from quiz_cards import approved_card_questions
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from cases_api import evaluate_with_yandex, PRIVATE_DATA
@@ -84,6 +85,14 @@ def make_learning_router(db, require, manager, scope, grade, audit):
         if outline: return text_outline_chapters(outline['chapters'])
         return chapters(r['body'])
 
+    def course_questions(c, r, parts=None):
+        parts = parts if parts is not None else course_chapters(c, r)
+        if parts and parts[0].get('kind') == 'dish':
+            # Curated menu lessons use verified ingredients, never the legacy
+            # "which component is explicitly listed" multiple choice bank.
+            return approved_card_questions(parts, r['id'])
+        return r['questions']
+
     def progress(c, uid, cid):
         row = c.execute('SELECT chapter_ids FROM learning_progress WHERE staff_id=%s AND course_id=%s', (uid, cid)).fetchone()
         return row['chapter_ids'] if row else []
@@ -103,7 +112,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                 result.append(dict(
                     id=r['id'], title=r['title'], category=category(r['title']),
                     chapters=len(parts), read=len(set(r['chapter_ids'] or []) & {p['id'] for p in parts}),
-                    passed=r['passed'], best_score=r['best_score'], questions=len(r['questions']),
+                    passed=r['passed'], best_score=r['best_score'], questions=len(course_questions(c, r, parts)),
                     structured=bool(parts and parts[0].get('kind')=='dish')
                 ))
             return result
@@ -114,7 +123,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             u = require(c, request); r = course(c, u, cid)
             return dict(id=r['id'], title=r['title'], source=r['source'], pass_score=r['pass_score'],
                         chapters=course_chapters(c,r), read=progress(c, u['id'], cid),
-                        questions=[public_question(q) for q in r['questions']],
+                        questions=[public_question(q) for q in course_questions(c, r)],
                         history=c.execute('SELECT id,score,passed,created_at FROM learning_attempts WHERE staff_id=%s AND course_id=%s ORDER BY id DESC', (u['id'], cid)).fetchall())
 
     @router.post('/{cid}/read')
@@ -137,19 +146,20 @@ def make_learning_router(db, require, manager, scope, grade, audit):
         except (KeyError, ValueError, TypeError, AttributeError): raise HTTPException(422, 'Некорректный номер попытки')
         with db() as c:
             u = require(c, request); r = course(c, u, cid)
-            if not r['questions']: raise HTTPException(422, 'У этого материала нет теста')
             lesson_parts = course_chapters(c,r)
+            questions = course_questions(c, r, lesson_parts)
+            if not questions: raise HTTPException(409, 'Тест готовится: менеджер проверяет учебный материал')
             if not lesson_parts:
                 raise HTTPException(409, 'Курс готовится: менеджер проверяет карточки')
             if not {p['id'] for p in lesson_parts} <= set(progress(c, u['id'], cid)):
                 raise HTTPException(409, 'Сначала изучите все главы')
-            score = grade(r['questions'], d.get('answers'))
-            row = c.execute('''INSERT INTO learning_attempts(staff_id,course_id,request_id,answers,score,passed)
-                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(staff_id,course_id,request_id) DO NOTHING RETURNING *''',
-                (u['id'], cid, rid, Jsonb(d['answers']), score, score >= r['pass_score'])).fetchone()
+            score = grade(questions, d.get('answers'))
+            row = c.execute('''INSERT INTO learning_attempts(staff_id,course_id,request_id,answers,questions,score,passed)
+                VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(staff_id,course_id,request_id) DO NOTHING RETURNING *''',
+                (u['id'], cid, rid, Jsonb(d['answers']), Jsonb(questions), score, score >= r['pass_score'])).fetchone()
             if row: audit(c, u['id'], 'learning:submit', row['id'])
             else: row = c.execute('SELECT * FROM learning_attempts WHERE staff_id=%s AND course_id=%s AND request_id=%s', (u['id'], cid, rid)).fetchone()
-            return {'score': row['score'], 'passed': row['passed'], 'review': [dict(q, answer=a, assessment=check(q,a)) for q,a in zip(r['questions'], row['answers'])]}
+            return {'score': row['score'], 'passed': row['passed'], 'review': [dict(q, answer=a, assessment=check(q,a)) for q,a in zip(row['questions'] or questions, row['answers'])]}
 
 
 
@@ -274,7 +284,8 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                 'Сравни ответ ТОЛЬКО с утверждённым материалом: '+reference,
                 'Проверь, что важные ингредиенты и особенности подачи переданы точно',
                 'Не одобряй выдуманные ингредиенты, неподтверждённые замены и обещания безопасности при аллергии',
-                'Дай короткий полезный комментарий, как лучше презентовать блюдо'
+                'Дай короткий полезный комментарий, как лучше презентовать блюдо',
+                'В next_step предложи пример следующей удачной презентации своими словами, без неподтверждённых фактов'
             ]
         }
         try:

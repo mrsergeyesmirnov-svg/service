@@ -150,5 +150,68 @@ class DishIntegration(unittest.TestCase):
             row=c.execute("SELECT status,tries FROM dish_practice_attempts WHERE request_id=%s",(rid,)).fetchone()
             self.assertEqual((row["status"],row["tries"]),("done",2))
 
+    def test_curated_quiz_replaces_legacy_and_saves_question_snapshot(self):
+        import uuid
+        from psycopg.types.json import Jsonb
+        from quiz_cards import approved_card_questions
+        from dish_lessons import dish_chapters
+        old=[dict(type="single",question="Какой компонент прямо указан в станционке?",options=["Томат","Сыр","Укроп"],correct=1,explanation="Сыр",source="старый тест")]
+        with self.connect() as c:
+            cid=c.execute("""INSERT INTO courses(author,restaurant,title,kind,body,source,questions,pass_score,published)
+                VALUES(10,'MOJO','Кухня. Салаты','ttk','Состав блюд','Синтетический пример',%s,80,true)
+                RETURNING id""",(Jsonb(old),)).fetchone()["id"]
+            for i,(title,ingredients) in enumerate([
+                ("Салат с томатами",["Томаты","Сыр","Оливковое масло","Руккола","Базилик","Соль"]),
+                ("Салат с огурцами",["Огурцы","Укроп","Сметана","Яйцо","Горчица","Петрушка"]),
+            ]):
+                did=c.execute("""INSERT INTO dish_cards(restaurant,created_by,title,section,ingredients,description,photo,published)
+                    VALUES('MOJO',10,%s,'Салаты',%s,'Утверждённая подача',%s,true)
+                    RETURNING id""",(title,Jsonb(ingredients),b'photo')).fetchone()["id"]
+                c.execute("INSERT INTO course_dishes(course_id,dish_id,position) VALUES(%s,%s,%s)",(cid,did,i))
+            expected=approved_card_questions(dish_chapters(c,cid,'MOJO'),cid)
+        course=self.client.get(f"/api/learning/{cid}",headers=self.headers(11))
+        self.assertEqual(course.status_code,200,course.text)
+        details=course.json()
+        kinds={q["type"] for q in details["questions"]}
+        self.assertEqual(kinds,{"ingredients","multiple"})
+        self.assertNotIn("прямо указан",str(details["questions"]))
+        for ch in details["chapters"]:
+            result=self.client.post(f"/api/learning/{cid}/read",headers=self.headers(11),json={"chapter_id":ch["id"]})
+            self.assertEqual(result.status_code,200,result.text)
+        responses=[
+            "\n".join(group[0] for group in q["ingredients"]) if q["type"]=="ingredients" else q["correct"]
+            for q in expected
+        ]
+        result=self.client.post(f"/api/learning/{cid}/submit",headers=self.headers(11),json={
+            "request_id":str(uuid.uuid4()),"answers":responses
+        })
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()["score"],100)
+        self.assertEqual(len(result.json()["review"]),len(expected))
+        with self.connect() as c:
+            stored=c.execute("SELECT questions FROM learning_attempts WHERE course_id=%s",(cid,)).fetchone()
+            self.assertEqual(len(stored["questions"]),len(expected))
+        # All approved ingredients are valid in free answers, not just the selected subset.
+        from questions import check
+        first=next(q for q in expected if q["type"]=="ingredients")
+        answer="\n".join([g[0] for g in first["ingredients"]]+first["allowed_extra"])
+        self.assertEqual(check(first,answer)["fraction"],1)
+
+    def test_voice_route_requires_login_and_does_not_store_audio(self):
+        from unittest.mock import patch
+        endpoint="/api/voice/transcribe"
+        media=b"\x00\x00\x00\x00ftyp" + b"0"*1024
+        with patch("voice.normalize_audio",return_value=b"OggS-test"),patch("voice.yandex_recognize",return_value="Я уточню предпочтения гостя.") as provider:
+            denied=self.client.post(endpoint,content=media,headers={"Content-Type":"audio/mp4"})
+            self.assertEqual(denied.status_code,401)
+            response=self.client.post(endpoint,content=media,headers=self.headers(11)|{"Content-Type":"audio/mp4"})
+            self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(response.json()["text"],"Я уточню предпочтения гостя.")
+            self.assertFalse(response.json()["audio_saved"])
+            self.assertEqual(provider.call_count,1)
+        with self.connect() as c:
+            log=c.execute("SELECT staff_id FROM voice_transcriptions").fetchall()
+            self.assertEqual(log,[{"staff_id":11}])
+
 if __name__=="__main__":
     unittest.main()

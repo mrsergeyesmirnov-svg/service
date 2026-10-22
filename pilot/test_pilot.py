@@ -167,7 +167,7 @@ class Integration(unittest.TestCase):
         marked=self.client.post(f'/api/learning/{cid}/read',json={'chapter_id':chapter['id']},headers=s)
         self.assertEqual(marked.status_code,200,marked.text)
         attempt=self.client.post(f'/api/learning/{cid}/submit',json={
-            'request_id':str(uuid.uuid4()),'answers':[0]},headers=s)
+            'request_id':str(uuid.uuid4()),'answers':['Avocado\nRice']},headers=s)
         self.assertEqual(attempt.status_code,200,attempt.text)
         self.assertEqual(attempt.json()['score'],100)
         # Changing a published recipe invalidates the current lesson until re-approved.

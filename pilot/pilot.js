@@ -126,11 +126,13 @@ async function caseDetail(id){
     "<div class='section-heading'><span class='eyebrow'>Ситуационная практика</span><h1>"+esc(c.title)+"</h1><p class='muted'>Как бы ты поступил на реальной смене?</p></div>"+
     "<article class='card case-scenario'><span class='eyebrow'>Ситуация</span><p class='body case-prompt'>"+esc(c.scenario)+"</p></article>"+
     "<form id='case-answer' class='card case-answer-card'><h2>Твоё решение</h2><label>Расскажи, что ты сделаешь и что скажешь гостю<textarea name='answer' required minlength='40' maxlength='1600' placeholder='Я бы поступил так…'></textarea></label>"+
+    voiceInputMarkup()+
     "<p class='muted'>Не указывай имена гостей, телефоны и другие персональные данные. Ответ отправится в Yandex AI Studio для разбора. Не является экзаменом.</p>"+
     "<button type='submit' class='lime-action'>Разобрать с ИИ →</button><p id='case-request-state' class='muted' role='status' aria-live='polite'></p></form>"+
     "<section id='case-feedback'></section>"+
     (history.length?"<h2>Предыдущие разборы</h2>"+previous:"");
   let retryRequestId=null,lastAnswer='';
+  bindVoiceInput($('#case-answer'));
   $('#case-answer').onsubmit=async e=>{
     e.preventDefault();const button=e.target.querySelector('button'),status=$('#case-request-state');button.disabled=true;
     const answer=e.target.querySelector('textarea').value;
