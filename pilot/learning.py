@@ -176,14 +176,14 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             for item in cases:
                 duplicate=c.execute("""SELECT id FROM case_scenarios
                     WHERE restaurant=%s AND title=%s AND source=%s AND scenario=%s LIMIT 1""",
-                    (u['restaurant'],item['title'],item['source'],item['scenario'])).fetchone()
+                    (row['restaurant'],item['title'],item['source'],item['scenario'])).fetchone()
                 if duplicate:
                     created.append(duplicate['id'])
                     continue
                 r=c.execute("""INSERT INTO case_scenarios
                     (author,restaurant,title,competency,action,scenario,source,criteria)
                     VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                    (u['id'],u['restaurant'],item['title'],item['competency'],
+                    (u['id'],row['restaurant'],item['title'],item['competency'],
                      item['action'],item['scenario'],item['source'],Jsonb(item['criteria']))).fetchone()
                 created.append(r['id'])
             audit(c,u['id'],'learning:ai-proposals',cid)
