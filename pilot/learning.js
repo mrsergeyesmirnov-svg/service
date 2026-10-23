@@ -10,7 +10,15 @@ function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article cl
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
 function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
-function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав${c.structured?' · карточки блюд':''}</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
+function courseCard(c){
+ const progress=c.chapters?Math.round(100*c.read/c.chapters):0;
+ const label=learningDone(c)?'Завершено':c.read?'В процессе':'Не начато';
+ return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+
+  '<span class="course-symbol">'+navSvg('courses')+'</span><span><strong>'+esc(c.title)+'</strong>'+
+  '<small>'+esc(directions[c.category]||'Обучение')+' · '+c.chapters+' глав</small>'+
+  '<progress max="100" value="'+progress+'" aria-label="Изучено '+progress+'%"></progress>'+
+  '<small>'+label+(c.best_score!==null?' · результат '+c.best_score+'%':'')+'</small></span><span aria-hidden="true">›</span></button>';
+}
 function managerCardAccess(){
  if(!isManager())return '<p>'+btn('Каталог блюд','dish-open','','secondary')+'</p>';
  const legacy=learningCourses.filter(c=>c.category==='menu'&&!c.structured);
@@ -26,21 +34,57 @@ async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
  if(page==='catalog'){
-  root.innerHTML='<h1>Курсы</h1>'+managerCardAccess()+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
+  root.innerHTML='<span class="eyebrow">МОЯ БИБЛИОТЕКА</span><h1>Учебные материалы</h1>'+
+   '<p class="muted learner-intro">Выбирай тему и учись в своём темпе. Все результаты сохраняются.</p>'+
+   '<div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+
+   Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div>'+
+   '<div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся после проверки менеджером.</div>')+'</div>'+
+   '<div class="card practice-entry"><span class="eyebrow">ПРАКТИКА</span><h2>Тренировка ситуаций</h2>'+
+   '<p class="muted">Попробуй ответить гостю своими словами и получи обратную связь.</p>'+
+   btn('Открыть практику →','nav','cases','','secondary')+'</div>'+
+   (isManager()?'<div class="manager-entry">'+btn('Управление Академией','open-manager','','secondary')+'</div>':'');
   return;
  }
- const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0),next=learningCourses.find(c=>!learningDone(c));
- const assignments=(await api('assignments')).filter(a=>a.staff_id===user.id&&!done(a));
- root.innerHTML=`<p class="eyebrow">${esc(roles[user.role])} · ${esc(user.restaurant)}</p><h1>Привет, ${esc(user.name)}</h1><section class="card learning-hero"><span class="eyebrow">Программа адаптации MOJO</span><h2>Мой путь в команду</h2><p>Изучи материал и закрепи знания на практике.</p>${total?`<div class="row"><span>Прочитано глав</span><strong>${read} из ${total}</strong></div><progress max="${total}" value="${read}"></progress>`:`<p>Материалы готовятся к публикации.${isManager()?' Черновики доступны в управлении материалами.':''}</p>`}${next?btn('Продолжить обучение →','study',next.id,'lime-action'):btn('Открыть курсы →','nav','catalog','lime-action')}</section><h2>Направления обучения</h2><div class="direction-grid">${Object.entries(directions).map(([k,v])=>`<button class="card direction" data-action="direction" data-id="${k}">${navSvg('courses')}<strong>${v}</strong><small>${learningCourses.filter(c=>c.category===k).length} курсов</small></button>`).join('')}</div>${assignments.length?`<h2>Обязательное обучение</h2>${assignments.slice(0,3).map(a=>`<article class="card"><h3>${esc(a.title)}</h3><p class="muted">До ${esc(dateLabel(a.deadline))}</p>${btn('Открыть назначение','lesson',a.id)}</article>`).join('')}`:''}${isManager()?managerCardAccess()+`<div class="actions">${btn('Назначения команды','nav','assignments','secondary')}${btn('Управление материалами','nav','courses','secondary')}</div>`:''}`;
+ const myAssignments=(await api('assignments')).filter(a=>a.staff_id===user.id&&!a.archived);
+ const pending=myAssignments.filter(a=>!done(a)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+ const complete=learningCourses.filter(learningDone).length,total=learningCourses.length;
+ const nextCourse=learningCourses.find(c=>!learningDone(c));
+ const urgent=pending[0],next=urgent||nextCourse;
+ const caption=urgent?'Обязательное обучение · до '+dateLabel(urgent.deadline):
+  nextCourse?esc(directions[nextCourse.category]||'Обучение')+' · '+nextCourse.read+' из '+nextCourse.chapters+' глав':'';
+ const progress=total?Math.round(100*complete/total):0;
+ const upcoming=[
+  ...pending.slice(urgent?1:0,3).map(a=>({id:a.id,title:a.title,kind:'assignment',sub:'До '+dateLabel(a.deadline)})),
+  ...learningCourses.filter(c=>!learningDone(c)&&(!nextCourse||c.id!==nextCourse.id)).slice(0,2).map(c=>({id:c.id,title:c.title,kind:'course',sub:directions[c.category]||'Учебный материал'}))
+ ].slice(0,3);
+ root.innerHTML='<div class="learner-topline"><span class="eyebrow">'+esc(roles[user.role])+' · '+esc(user.restaurant)+'</span>'+
+  (isManager()?btn('Управление →','open-manager','','secondary'):'')+'</div>'+
+  '<h1>Привет, '+esc(user.name)+'</h1>'+
+  '<section class="card journey-progress" aria-label="Прогресс учебной программы">'+
+   '<div class="row"><strong>Мой путь в MOJO</strong><span>'+complete+' из '+total+' курсов</span></div>'+
+   '<progress max="100" value="'+progress+'" aria-label="Завершено '+progress+'% курсов"></progress>'+
+   '<p class="muted">'+(total?'Продвигайся по программе в своём темпе.':'Программа появится после публикации материалов.')+'</p></section>'+
+  (next?'<section class="card journey-next"><span class="eyebrow">СЕЙЧАС В ПРОГРАММЕ</span>'+
+   '<h2>'+esc(next.title)+'</h2><p>'+caption+'</p>'+
+   '<div class="journey-steps"><span>1 · Материал</span><span>2 · Тест</span><span>3 · Практика</span></div>'+
+   btn('Продолжить обучение →',urgent?'lesson':'study',next.id,'lime-action')+'</section>':
+   '<section class="card journey-next"><span class="eyebrow">МОЙ ПУТЬ</span><h2>'+(total?'Все курсы пройдены!':'Начни с библиотеки')+'</h2>'+
+   '<p class="muted">'+(total?'Можешь повторить уроки или потренироваться на кейсах.':'Как только менеджер опубликует курс, он появится здесь.')+'</p>'+
+   btn('Открыть библиотеку →','nav','catalog','lime-action')+'</section>')+
+  (upcoming.length?'<div class="row journey-section-title"><h2>Дальше по программе</h2></div>'+
+   upcoming.map((c,i)=>'<button class="journey-mini" data-action="'+(c.kind==='assignment'?'lesson':'study')+'" data-id="'+c.id+'"><span class="journey-num">'+(i+1)+'</span><span><strong>'+esc(c.title)+'</strong><small>'+esc(c.sub)+'</small></span><span aria-hidden="true">›</span></button>').join(''):'')+
+  '<div class="journey-bottom">'+btn('Вся библиотека →','nav','catalog','','secondary')+'</div>';
 }
 async function study(id){
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
  activeCourse=await api('learning/'+id);
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
- if(chapterIndex<0)chapterIndex=0;
- showChapter();
+ if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
+ if(activeCourse.chapters.length&&activeCourse.chapters.every(c=>activeCourse.read.includes(c.id))&&
+  (!activeCourse.questions.length||activeCourse.history.some(t=>t.passed)))showStudyComplete();
+ else showChapter();
 }
-function studyHeader(sub){return `<div class="lesson-top">${btn('←','nav','catalog','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
+function studyHeader(sub){return `<div class="lesson-top">${btn('← Мой путь','nav','home','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
 function legacyText(text){
  // Display only: original course source remains immutable in PostgreSQL.
  return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
