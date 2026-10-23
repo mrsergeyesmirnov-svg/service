@@ -201,7 +201,7 @@ function caseReview(id){
     btn('Материал проверен — опубликовать','case-publish',c.id)+"</div>";
 }
 
-function caseOutcome(id,feedback,courses=[]){
+function caseOutcome(id,feedback,courses=[],answer=''){
   const needsReview=feedback.needs_review===true;
   const course=courses.find(x=>x.id===feedback.recommended_course_id);
   const available=caseCache.filter(x=>x.published&&!x.archived&&x.id!==id);
@@ -226,7 +226,7 @@ function caseOutcome(id,feedback,courses=[]){
     '<div class="case-outcome-actions">'+btn('Попробовать кейс ещё раз','case-open',id,'secondary')+
     (next&&needsReview?btn('Другой кейс','case-open',next.id,'secondary'):'')+
     '</div></section>'+
-    '<details class="card case-outcome-details"><summary>Полный разбор ответа</summary>'+
+    '<details class="card case-outcome-details"><summary>Полный разбор ответа</summary>'+\n    (answer?'<h3>Твой ответ</h3><p>'+esc(answer)+'</p>':'')+
     '<h3>Что получилось</h3><p>'+esc(feedback.strengths)+'</p>'+
     '<h3>Что улучшить</h3><p>'+esc(feedback.improvements)+'</p>'+
     '<p class="muted">Рекомендация ИИ — учебная обратная связь, не решение о допуске к смене.</p></details></div>';
@@ -280,7 +280,7 @@ async function caseDetail(id){
       retryRequestId=null;lastAnswer='';
       const courses=f.needs_review&&f.recommended_course_id?
         await api('learning').catch(()=>[]):[];
-      $('#app').innerHTML=caseOutcome(id,f,courses);
+      $('#app').innerHTML=caseOutcome(id,f,courses,answer);
       window.scrollTo(0,0);
     }catch(err){button.disabled=false;status.textContent='Не получилось получить обратную связь. Ответ не пропал — можно повторить.';error(err)}
   };
