@@ -363,6 +363,9 @@ def learning_script():return FileResponse(BASE/'learning.js',media_type='applica
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
 
+@app.get('/pilot/events.js')
+def events_script():return FileResponse(BASE/'events.js',media_type='application/javascript')
+
 @app.get('/pilot/voice.js')
 def voice_script():return FileResponse(BASE/'voice.js',media_type='application/javascript')
 
