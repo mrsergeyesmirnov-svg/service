@@ -129,6 +129,34 @@ async function main() {
   assert.match(navRoot.innerHTML,/data-id="home"/);
   assert.match(navRoot.innerHTML,/data-id="events"/);
   assert.doesNotMatch(navRoot.innerHTML,/data-id="dashboard"/);
-  console.log("MOJO learner path, manager workspace and cache-busters: OK");
+  // The practice result must never strand an employee under AI feedback.
+  const start=mainCode.indexOf("function caseOutcome(");
+  const end=mainCode.indexOf("async function caseDetail(",start);
+  assert(start>0&&end>start);
+  const outcomeCtx={
+    btn,
+    esc:x=>String(x??""),
+    caseCache:[{id:10,published:true,archived:false},{id:11,published:true,archived:false}],
+  };
+  vm.createContext(outcomeCtx);
+  vm.runInContext(mainCode.slice(start,end),outcomeCtx,{filename:"case-outcome"});
+  const feedback={
+    summary:"Нужно уточнить состав",strengths:"Не выдумал рецепт",
+    improvements:"Уточнить ограничения",next_step:"Повтори правило проверки на кухне",
+    focus_topic:"Ограничения питания",needs_review:true,recommended_course_id:7,
+  };
+  const recommended=outcomeCtx.caseOutcome(10,feedback,[{id:7,title:"Сервис WOW"}],"Проверю состав.");
+  assert.match(recommended,/data-action="study" data-id="7"/);
+  assert.match(recommended,/Сервис WOW/);
+  assert.match(recommended,/data-action="case-open" data-id="10"/);
+  assert.match(recommended,/Твой ответ/);
+  assert.match(recommended,/Проверю состав/);
+  const unknown=outcomeCtx.caseOutcome(10,{...feedback,recommended_course_id:999},[]);
+  assert.match(unknown,/data-action="nav" data-id="catalog"/);
+  assert.doesNotMatch(unknown,/data-action="study"/);
+  const next=outcomeCtx.caseOutcome(10,{...feedback,needs_review:false},[]);
+  assert.match(next,/data-action="case-open" data-id="11"/);
+  assert.match(next,/Полный разбор ответа/);
+  console.log("MOJO learner path, manager workspace and case outcome: OK");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
