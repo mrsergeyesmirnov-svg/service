@@ -131,12 +131,25 @@ async function caseDetail(id){
     "<button type='submit' class='lime-action'>Разобрать с ИИ →</button><p id='case-request-state' class='muted' role='status' aria-live='polite'></p></form>"+
     "<section id='case-feedback'></section>"+
     (history.length?"<h2>Предыдущие разборы</h2>"+previous:"");
-  let retryRequestId=null,lastAnswer='';
+  const draftKey='mojo-case:'+user.id+':'+id;
+  let localDraft={};
+  try{localDraft=JSON.parse(localStorage.getItem(draftKey)||'{}')}catch(_){}
+  const saved=await api('cases/'+id+'/draft');
+  let retryRequestId=localDraft.request_id||saved.request_id||null,lastAnswer=localDraft.answer||saved.answer||'';
+  const answerField=$('#case-answer textarea');
+  answerField.value=lastAnswer;
+  const remember=()=>{
+    if(answerField.value!==lastAnswer){lastAnswer=answerField.value;retryRequestId=crypto.randomUUID()}
+    try{localStorage.setItem(draftKey,JSON.stringify({answer:lastAnswer,request_id:retryRequestId}))}catch(_){}
+  };
+  answerField.addEventListener('input',remember);
+  if(lastAnswer)$('#case-request-state').textContent='Твой предыдущий ответ восстановлен. Можно повторить отправку.';
   bindVoiceInput($('#case-answer'));
   $('#case-answer').onsubmit=async e=>{
     e.preventDefault();const button=e.target.querySelector('button'),status=$('#case-request-state');button.disabled=true;
     const answer=e.target.querySelector('textarea').value;
-    if(answer!==lastAnswer){retryRequestId=crypto.randomUUID();lastAnswer=answer}
+    remember();
+    if(!retryRequestId)retryRequestId=crypto.randomUUID();
     status.textContent='ИИ анализирует твой ответ. Не закрывай экран.';
     try{
       const f=await api('cases/'+id+'/practice','POST',{answer,request_id:retryRequestId});
@@ -146,6 +159,7 @@ async function caseDetail(id){
         "<h3>Следующий шаг</h3><p>"+esc(f.next_step)+"</p>"+
         "<p class='muted'>Обратная связь ИИ — учебная, а не решение о допуске.</p></article>";
       status.textContent='Разбор готов. Ответ сохранён в истории обучения.';
+      try{localStorage.removeItem(draftKey)}catch(_){}
       retryRequestId=null;lastAnswer='';
       button.disabled=false;
       $('#case-feedback').scrollIntoView({behavior:'smooth'});

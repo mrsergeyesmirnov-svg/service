@@ -34,13 +34,13 @@ def approved_card_questions(chapters, course_id):
         title = card["title"]
         source = f'{card["source"]}, стр. {card["source_page"]}' if card.get("source_page") else card["source"]
         ingredients = _ingredients(card)
-        names = _order(ingredients, str(card["dish_id"]))[:min(5, len(ingredients))]
+        names = ingredients
         # Open recall is checked deterministically, based on the approved composition.
         questions.append({
             "type": "ingredients",
-            "question": f'Назови по памяти {len(names)} компонентов из состава «{title}». Без подсказок.',
+            "question": f'Перечисли по памяти все компоненты ({len(names)}) из состава «{title}». Без подсказок.',
             "ingredients": [[name] for name in names],
-            "allowed_extra": [x for x in ingredients if normalize(x) not in {normalize(n) for n in names}],
+            "allowed_extra": [],
             "options": [],
             "explanation": "Проверь состав по утверждённой карточке блюда, затем повтори пропущенные компоненты.",
             "source": source,
@@ -61,6 +61,7 @@ def approved_card_questions(chapters, course_id):
             options = [correct[0], decoys[0], correct[1], decoys[1]]
             if len(correct) >= 3 and len(decoys) >= 3:
                 options.extend([decoys[2], correct[2]])
+            options = _order(options, str(course_id) + ":" + str(card["dish_id"]))
             questions.append({
                 "type": "multiple",
                 "question": f'Отметь все компоненты, которые действительно входят в «{title}».',

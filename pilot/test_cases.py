@@ -12,6 +12,18 @@ CASE=dict(
     ])
 
 class Cases(unittest.TestCase):
+    def test_generated_recall_requires_the_complete_named_composition(self):
+        from quiz_cards import approved_card_questions
+        from questions import check, public_question
+        cards=[dict(kind='dish',title='Training dish',source='Synthetic',dish_id=1,
+                    ingredients=['Alpha','Beta','Gamma','Delta','Epsilon','Zeta'])]
+        q=approved_card_questions(cards,1)[0]
+        self.assertEqual(len(q['ingredients']),6)
+        self.assertIn('все компоненты (6)',q['question'])
+        self.assertEqual(check(q,'Zeta;Epsilon;Delta;Gamma;Beta;Alpha')['fraction'],1)
+        self.assertLess(check(q,'Alpha;Beta;Gamma;Delta;Epsilon')['fraction'],1)
+        self.assertNotIn('ingredients',public_question(q))
+
     def test_public_cases_hide_rubrics(self):
         row=dict(id=5,title="Паста",scenario="Гость просит пасту.",source="ServiceBook",published=True,
                  competency="Проактивная забота",action="Уточняет предпочтения",

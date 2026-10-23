@@ -220,6 +220,16 @@ def make_router(db, require, manager, scope, audit):
                 FROM case_attempts a JOIN staff s ON s.id=a.staff_id
                 WHERE a.case_id=%s ORDER BY a.id DESC LIMIT 100""",(case_id,)).fetchall()
 
+    @router.get("/{case_id}/draft")
+    def saved_answer(case_id:int,request:Request):
+        with db() as c:
+            u=require(c,request)
+            row=c.execute("""SELECT d.answer,d.request_id FROM case_answer_drafts d
+                JOIN case_scenarios s ON s.id=d.case_id
+                WHERE d.staff_id=%s AND d.case_id=%s AND s.restaurant=%s
+                AND s.published AND NOT s.archived""",(u["id"],case_id,u["restaurant"])).fetchone()
+            return row or {}
+
     @router.post("/{case_id}/practice")
     async def practice(case_id:int,request:Request):
         d=await request.json()
@@ -246,11 +256,19 @@ def make_router(db, require, manager, scope, audit):
                               (u["id"],)).fetchone()["n"]
             if count>=5:raise HTTPException(429,"Лимит: пять разборов за 24 часа")
             sid=u["id"]
+            # A separate short transaction survives provider failure or process restart.
+            with db() as saved:
+                saved.execute("""INSERT INTO case_answer_drafts(staff_id,case_id,request_id,answer)
+                    VALUES(%s,%s,%s,%s) ON CONFLICT(staff_id,case_id)
+                    DO UPDATE SET request_id=excluded.request_id,answer=excluded.answer,updated_at=now()""",
+                    (sid,case_id,rid,answer))
             feedback=await run_in_threadpool(evaluate_with_yandex,row,answer)
             inserted=c.execute("""INSERT INTO case_attempts(case_id,staff_id,request_id,answer,feedback)
                                 VALUES(%s,%s,%s,%s,%s) ON CONFLICT(case_id,staff_id,request_id)
                                 DO NOTHING RETURNING id""",
                                (case_id,sid,rid,answer,Jsonb(feedback))).fetchone()
+            c.execute("DELETE FROM case_answer_drafts WHERE staff_id=%s AND case_id=%s AND request_id=%s",
+                      (sid,case_id,rid))
             if inserted: audit(c,sid,"case:practice",case_id)
             else:
                 feedback=c.execute("""SELECT feedback FROM case_attempts WHERE case_id=%s AND staff_id=%s AND request_id=%s""",
