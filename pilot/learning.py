@@ -8,6 +8,7 @@ from dish_lessons import dish_chapters, map_details, save_mapping
 from course_pdf import course_chapters_from_pdf, MAX_PDF_BYTES
 from dishes import limited_body
 from quiz_cards import approved_card_questions
+from course_ai import generate_review_drafts
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from cases_api import evaluate_with_yandex, PRIVATE_DATA
@@ -142,6 +143,54 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             audit(c, u['id'], 'course:pdf-draft', cid)
         return {'id': cid, 'chapters': len(outline),
                 'status': 'draft', 'duplicate': False}
+
+    @router.post('/{cid}/generate')
+    async def generate_course_drafts(cid:int, request:Request):
+        """Yandex proposes verified-shape questions and case drafts; manager reviews before publish."""
+        with db() as c:
+            u=require(c,request);manager(u)
+            row=c.execute("SELECT * FROM courses WHERE id=%s",(cid,)).fetchone()
+            if not row:raise HTTPException(404, "Курс не найден")
+            scope(u,row['restaurant'])
+            if row['published'] or row['archived'] or row['questions']:
+                raise HTTPException(409, "Предложения доступны только для нового черновика без теста")
+            outline=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
+            if not outline or not outline['chapters']:
+                raise HTTPException(409, "Сначала загрузи PDF или подготовь учебные главы")
+            chapters=outline['chapters']
+        # Never hold a DB connection/transaction while waiting for a paid AI call.
+        questions,cases=await run_in_threadpool(generate_review_drafts,chapters)
+        with db() as c:
+            u=require(c,request);manager(u)
+            c.execute("SELECT pg_advisory_xact_lock(%s,%s)",(823412,cid))
+            row=c.execute("SELECT * FROM courses WHERE id=%s FOR UPDATE",(cid,)).fetchone()
+            if not row:raise HTTPException(404)
+            scope(u,row['restaurant'])
+            if row['published'] or row['archived'] or row['questions']:
+                raise HTTPException(409, "Курс уже изменён другим менеджером. Проверь черновик")
+            current=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
+            if not current or current['chapters']!=chapters:
+                raise HTTPException(409, "Главы изменились во время генерации. Повтори после проверки")
+            c.execute("UPDATE courses SET questions=%s WHERE id=%s",(Jsonb(questions),cid))
+            created=[]
+            for item in cases:
+                duplicate=c.execute("""SELECT id FROM case_scenarios
+                    WHERE restaurant=%s AND title=%s AND source=%s AND scenario=%s LIMIT 1""",
+                    (u['restaurant'],item['title'],item['source'],item['scenario'])).fetchone()
+                if duplicate:
+                    created.append(duplicate['id'])
+                    continue
+                r=c.execute("""INSERT INTO case_scenarios
+                    (author,restaurant,title,competency,action,scenario,source,criteria)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                    (u['id'],u['restaurant'],item['title'],item['competency'],
+                     item['action'],item['scenario'],item['source'],Jsonb(item['criteria']))).fetchone()
+                created.append(r['id'])
+            audit(c,u['id'],'learning:ai-proposals',cid)
+        from question_quality import quality_issues
+        return {'status':'draft','questions':len(questions),'cases':len(created),
+                'course_id':cid,'case_ids':created,'warnings':quality_issues(questions),
+                'review_required':True}
 
     @router.get('')
     def catalog(request: Request):
