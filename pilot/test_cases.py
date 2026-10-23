@@ -92,4 +92,34 @@ class Cases(unittest.TestCase):
         self.assertIn("approved_criteria",req.kwargs["json"]["messages"][1]["content"])
         self.assertNotIn("staff_id",req.kwargs["json"]["messages"][1]["content"])
 
+    def test_uncertainty_recommends_only_real_published_courses(self):
+        response=MagicMock()
+        client=MagicMock()
+        client.post.return_value=response
+        cm=MagicMock()
+        cm.__enter__.return_value=client
+        base={"summary":"Не все критерии подтверждены","strengths":"Уточнил пожелание",
+              "improvements":"Проверить полный состав","next_step":"Повтори порядок проверки",
+              "needs_review":True,"focus_topic":"Ограничения питания"}
+        available=[{"id":7,"title":"Сервис WOW"}]
+        with patch.dict(os.environ,{"YANDEX_API_KEY":"test-not-real","YANDEX_FOLDER_ID":"test-folder"}):
+            with patch("cases_api.httpx.Client",return_value=cm):
+                response.json.return_value={"choices":[{"message":{"content":json.dumps({
+                    **base,"recommended_course_id":7})}}]}
+                matched=evaluate_with_yandex(CASE,"Уточню у кухни.",available)
+                self.assertTrue(matched["needs_review"])
+                self.assertEqual(matched["recommended_course_id"],7)
+                source=json.loads(client.post.call_args.kwargs["json"]["messages"][1]["content"])
+                self.assertEqual(source["published_courses"],available)
+                response.json.return_value={"choices":[{"message":{"content":json.dumps({
+                    **base,"recommended_course_id":901})}}]}
+                untrusted=evaluate_with_yandex(CASE,"Уточню у кухни.",available)
+                self.assertEqual(untrusted["recommended_course_id"],0)
+                response.json.return_value={"choices":[{"message":{"content":json.dumps({
+                    **base,"needs_review":False,"recommended_course_id":7})}}]}
+                confident=evaluate_with_yandex(CASE,"Уточню у кухни.",available)
+                self.assertEqual(confident["recommended_course_id"],0)
+        with self.assertRaises(ValueError):
+            interpret({**base,"recommended_course_id":False})
+
 if __name__=="__main__":unittest.main(verbosity=2)
