@@ -35,6 +35,27 @@ class Core(unittest.TestCase):
         self.assertTrue(chapters[1]["title"].startswith("2. Involvement"))
         self.assertEqual(chapters[2]["source"],"WOW.pdf, стр. 2")
 
+    def test_ai_generation_schema_rejects_unsupported_chapters(self):
+        from course_ai import validate_generated
+        lesson=[{'title':'WOW','body':'Ask the guest first and listen.',
+                 'source':'Synthetic source, стр. 1'}]
+        question={'type':'multiple','question':'Which actions support the guest?',
+                  'options':['Ask','Listen','Guess','Ignore'],'correct':[0,1],
+                  'explanation':'Listen before recommending.','chapter':0}
+        scenario={'title':'Guest asks for advice','competency':'Care',
+                  'action':'Ask and listen','scenario':'A guest is undecided. What will you do?',
+                  'criteria':['Clarify the request','Listen attentively'],'chapter':0}
+        questions,cases=validate_generated({'questions':[question]*3,'cases':[scenario]},lesson)
+        self.assertEqual(len(questions),3)
+        self.assertEqual(questions[0]['source'],'Synthetic source, стр. 1')
+        self.assertEqual(cases[0]['source'],'Synthetic source, стр. 1')
+        wrong=dict(question,chapter=4)
+        with self.assertRaises(ValueError):
+            validate_generated({'questions':[wrong]*3,'cases':[scenario]},lesson)
+        wrong=dict(question,correct=[99])
+        with self.assertRaises(server.HTTPException):
+            validate_generated({'questions':[wrong]*3,'cases':[scenario]},lesson)
+
     def test_wow_smile_pdf_courses_are_service(self):
         from learning import category
         for name in ['WOW — ценности MOJO','SMILE — философия гостеприимства','ВАУ — атмосфера']:
