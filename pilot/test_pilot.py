@@ -473,6 +473,13 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=local).status_code,403)
         self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=m).status_code,200)
         feedback={k:'Training feedback' for k in ('summary','strengths','improvements','next_step')}
+        # Failed provider calls must leave an owner-only recoverable answer.
+        with patch.object(cases_api,'evaluate_with_yandex',side_effect=server.HTTPException(502,'Unavailable')):
+            self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).status_code,502)
+        self.assertEqual(self.client.get(url+'/draft',headers=s).json(),payload)
+        self.assertEqual(self.client.get(url+'/draft',headers=other).json(),{})
+        self.assertEqual(self.client.get(url+'/draft',headers=local).json(),{})
+        self.assertEqual(self.client.get(url+'/history',headers=s).json(),[])
         started=Event();release=Event()
         def evaluate(*args):
             started.set()
@@ -489,6 +496,7 @@ class Integration(unittest.TestCase):
                 self.assertEqual(first.result().status_code,200)
             self.assertEqual(self.client.post(url+'/practice',json=payload,headers=s).json(),feedback)
             self.assertEqual(ai.call_count,1)
+        self.assertEqual(self.client.get(url+'/draft',headers=s).json(),{})
         self.assertEqual(self.client.get(url+'/results',headers=s).status_code,403)
         self.assertEqual(self.client.get(url+'/results',headers=local).status_code,403)
         self.assertEqual(len(self.client.get(url+'/results',headers=m).json()),1)

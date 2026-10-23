@@ -158,3 +158,13 @@ CREATE INDEX IF NOT EXISTS voice_transcriptions_daily ON voice_transcriptions(st
 -- Archive obsolete tests/courses without deleting staff progress or historical exam results.
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS courses_catalog_visibility ON courses(restaurant,published,archived);
+
+-- Preserve submitted case answers independently of the provider transaction.
+CREATE TABLE IF NOT EXISTS case_answer_drafts (
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ case_id BIGINT NOT NULL REFERENCES case_scenarios(id),
+ request_id UUID NOT NULL,
+ answer TEXT NOT NULL,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(staff_id,case_id)
+);
