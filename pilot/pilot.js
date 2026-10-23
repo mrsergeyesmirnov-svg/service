@@ -226,7 +226,8 @@ function caseOutcome(id,feedback,courses=[],answer=''){
     '<div class="case-outcome-actions">'+btn('Попробовать кейс ещё раз','case-open',id,'secondary')+
     (next&&needsReview?btn('Другой кейс','case-open',next.id,'secondary'):'')+
     '</div></section>'+
-    '<details class="card case-outcome-details"><summary>Полный разбор ответа</summary>'+\n    (answer?'<h3>Твой ответ</h3><p>'+esc(answer)+'</p>':'')+
+    '<details class="card case-outcome-details"><summary>Полный разбор ответа</summary>'+
+    (answer?'<h3>Твой ответ</h3><p>'+esc(answer)+'</p>':'')+
     '<h3>Что получилось</h3><p>'+esc(feedback.strengths)+'</p>'+
     '<h3>Что улучшить</h3><p>'+esc(feedback.improvements)+'</p>'+
     '<p class="muted">Рекомендация ИИ — учебная обратная связь, не решение о допуске к смене.</p></details></div>';
