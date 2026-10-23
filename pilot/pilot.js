@@ -39,7 +39,7 @@ function nav(){
   $('#nav').classList.toggle('manager-nav',managerSection);
   $('#nav').setAttribute('aria-label',managerSection?'Управление Академией':'Разделы обучения');
   $('#nav').innerHTML=tabs.map(([id,label])=>{
-    const active=view===id||(managerSection&&id==='courses'&&['dishes','cases'].includes(view));
+    const active=view===id||(id==='catalog'&&!managerSection&&view==='cases')||(managerSection&&id==='courses'&&['dishes','cases'].includes(view));
     return '<button class="nav-item '+(active?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(active?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>';
   }).join('');
 }
