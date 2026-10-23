@@ -23,7 +23,10 @@ async function eventsPage(){
 }
 function eventForm(item){
   if(!isManager())return;
-  const formValue=item?new Date(item.starts_at).toISOString().slice(0,16):'';
+  const formValue=item?(()=>{
+    const d=new Date(item.starts_at);
+    return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  })():'';
   $('#app').innerHTML=workspaceHeader(item?'Редактировать мероприятие':'Новое мероприятие','Мероприятие появится у сотрудников только после публикации.')+
     '<form class="card" id="event-form">'+
     '<label>Название<input name="title" maxlength="180" required value="'+esc(item?.title||'')+'" placeholder="Например, тренинг по сервису"></label>'+
