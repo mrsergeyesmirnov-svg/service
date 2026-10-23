@@ -19,17 +19,6 @@ function courseCard(c){
   '<progress max="100" value="'+progress+'" aria-label="Изучено '+progress+'%"></progress>'+
   '<small>'+label+(c.best_score!==null?' · результат '+c.best_score+'%':'')+'</small></span><span aria-hidden="true">›</span></button>';
 }
-function managerCardAccess(){
- if(!isManager())return '<p>'+btn('Каталог блюд','dish-open','','secondary')+'</p>';
- const legacy=learningCourses.filter(c=>c.category==='menu'&&!c.structured);
- return '<section class="card academy-manager-tools" aria-label="Управление карточками блюд">'+
- '<span class="eyebrow">КАБИНЕТ МЕНЕДЖЕРА</span>'+
- '<h2>Карточки блюд</h2>'+
- '<p>Загрузи PDF станционок, проверь составы и фотографии, исправь устаревшие позиции и опубликуй карточки.</p>'+
- btn('Открыть редактор карточек →','dish-open','','lime-action')+
- (legacy.length?'<p class="muted academy-manager-warning">⚠ '+legacy.length+' курсов основного меню пока используют старые тесты. После публикации карточек открой «Управление материалами» → «Собрать главы из карточек», чтобы включить тесты с открытыми ответами и несколькими верными вариантами.</p>':'')+
- '</section>';
-}
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
@@ -55,7 +44,7 @@ async function learningPage(page){
  const progress=total?Math.round(100*complete/total):0;
  const upcoming=[
   ...pending.slice(urgent?1:0,3).map(a=>({id:a.id,title:a.title,kind:'assignment',sub:'До '+dateLabel(a.deadline)})),
-  ...learningCourses.filter(c=>!learningDone(c)&&(!nextCourse||c.id!==nextCourse.id)).slice(0,2).map(c=>({id:c.id,title:c.title,kind:'course',sub:directions[c.category]||'Учебный материал'}))
+  ...learningCourses.filter(c=>!learningDone(c)&&(urgent||!nextCourse||c.id!==nextCourse.id)).slice(0,2).map(c=>({id:c.id,title:c.title,kind:'course',sub:directions[c.category]||'Учебный материал'}))
  ].slice(0,3);
  root.innerHTML='<div class="learner-topline"><span class="eyebrow">'+esc(roles[user.role])+' · '+esc(user.restaurant)+'</span>'+
   (isManager()?btn('Управление →','open-manager','','secondary'):'')+'</div>'+
@@ -148,7 +137,7 @@ function showPostTestPractice(dishId){
  const selected=cards.find(x=>x.dish_id===dishId)||cards[0];
  const options=cards.map(x=>'<option value="'+x.dish_id+'"'+(x.dish_id===selected.dish_id?' selected':'')+'>'+esc(x.title)+'</option>').join('');
  $('#app').innerHTML=studyHeader('Практика · после теста')+
- '<section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
+ '<div class="lesson-stage"><span>1 · Изучение</span><span>2 · Тест</span><span class="stage-active">3 · Практика</span></div><section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
  '<h1>Презентуй блюдо гостю</h1>'+
  '<p class="muted">Представь, что гость спрашивает об одном из блюд MOJO. Ты уже изучил материал и прошёл тест. Сейчас попробуй объяснить его своими словами, как за столом.</p>'+
  '<label>Выбери блюдо для презентации<select id="practice-dish-select">'+options+'</select></label>'+
@@ -160,7 +149,13 @@ function showPostTestPractice(dishId){
  '<p id="dish-practice-state" role="status"></p>'+
  '<div id="dish-practice-feedback" aria-live="polite"></div></form></section>'+
  btn('Вернуться к курсу','study',c.id,'secondary');
- $('#practice-dish-select').onchange=e=>showPostTestPractice(Number(e.target.value));
+ $('#practice-dish-select').onchange=e=>{
+    const draft=$('#dish-practice-form [name=answer]').value.trim();
+    if(draft&&!confirm('При смене блюда несохранённый ответ очистится. Продолжить?')){
+      e.target.value=String(selected.dish_id);return;
+    }
+    showPostTestPractice(Number(e.target.value));
+  };
  bindDishPractice(c.id,selected.dish_id);
  bindVoiceInput($('#dish-practice-form'));
  window.scrollTo(0,0);
@@ -195,7 +190,7 @@ function bindDishPractice(courseId,dishId){
 }
 function showStudyQuiz(){
  const c=activeCourse,q=c.questions[quizIndex];
- $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
+ $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<div class="lesson-stage"><span>1 · Изучение</span><span class="stage-active">2 · Тест</span><span>3 · Практика</span></div><progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
  if(quizIndex)$('#study-quiz [data-action]').type='button';
  $('#study-quiz').onsubmit=async e=>{
   e.preventDefault();quizAnswers[quizIndex]=readAnswer(q,new FormData(e.target),'answer');
