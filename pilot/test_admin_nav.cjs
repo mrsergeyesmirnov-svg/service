@@ -50,14 +50,17 @@ async function main() {
   assert.match(root.innerHTML, /data-action="nav" data-id="cases"/);
   assert.doesNotMatch(root.innerHTML, /data-action="dish-open"/);
 
-  assert.match(mainCode, /\['home','Мой путь'\],\['catalog','Библиотека'\],\['profile','Профиль'\]/);
-  assert.match(mainCode, /\['team','Команда'\],\['courses','Программы'\],\['assignments','Результаты'\]/);
+  assert.match(mainCode, /\['home','Мой путь'\],\['catalog','Курсы'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
+  assert.match(mainCode, /\['dashboard','Обзор'\],\['courses','Программы'\],\['team','Команда'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
+  assert.match(mainCode, /managerMode=isManager\(\);view=managerMode\?'dashboard':'home'/);
+  assert.match(mainCode, /data-action="nav" data-id="events"/);
   assert.match(mainCode, /Карточки блюд · управление/);
   assert.match(mainCode, /coursePdfPanel\(\)/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261023-ux2/);
-  assert.match(html, /pilot\.js\?v=20261023-ux2/);
-  assert.match(html, /learning\.css\?v=20261023-ux2/);
+  assert.match(html, /learning\.js\?v=20261023-events1/);
+  assert.match(html, /pilot\.js\?v=20261023-events1/);
+  assert.match(html, /learning\.css\?v=20261023-events1/);
+  assert.match(html, /events\.js\?v=20261023-events1/);
   const calls=[];
   const assignment={id:42,course_id:7,title:'Required',deadline:'2026-10-24',
     questions:[{type:'single',question:'Required question',options:['A','B']}],
