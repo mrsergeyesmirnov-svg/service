@@ -201,6 +201,37 @@ function caseReview(id){
     btn('Материал проверен — опубликовать','case-publish',c.id)+"</div>";
 }
 
+function caseOutcome(id,feedback,courses=[]){
+  const needsReview=feedback.needs_review===true;
+  const course=courses.find(x=>x.id===feedback.recommended_course_id);
+  const available=caseCache.filter(x=>x.published&&!x.archived&&x.id!==id);
+  const next=available.length?available[0]:null;
+  const recommendation=needsReview&&course;
+  const primary=recommendation?btn('Изучить «'+esc(course.title)+'» →','study',course.id,'lime-action'):
+    needsReview?btn('Открыть библиотеку →','nav','catalog','lime-action'):
+    next?btn('Следующий кейс →','case-open',next.id,'lime-action'):
+    btn('К списку кейсов →','nav','cases','lime-action');
+  return '<div class="case-outcome">'+
+    btn('← Все кейсы','nav','cases','secondary')+
+    '<section class="card case-outcome-hero"><span class="eyebrow">ОТВЕТ СОХРАНЁН</span>'+
+    '<h1>'+(needsReview?'Есть что закрепить':'Кейс разобран')+'</h1>'+
+    '<p>'+esc(feedback.summary)+'</p></section>'+
+    '<section class="card case-outcome-next"><span class="eyebrow">ТВОЙ СЛЕДУЮЩИЙ ШАГ</span>'+
+    '<h2>'+(needsReview?'Повтори тему и попробуй применить её':'Закрепи результат на практике')+'</h2>'+
+    (needsReview&&feedback.focus_topic?'<p class="case-focus">Повторить: '+esc(feedback.focus_topic)+'</p>':'')+
+    '<p>'+esc(feedback.next_step)+'</p>'+
+    (recommendation?'<p class="case-course-name">Учебный материал MOJO: '+esc(course.title)+'</p>':
+     needsReview?'<p class="muted">Прямой урок по этой теме не найден. Выбери подходящий материал в библиотеке.</p>':'')+
+    primary+
+    '<div class="case-outcome-actions">'+btn('Попробовать кейс ещё раз','case-open',id,'secondary')+
+    (next&&needsReview?btn('Другой кейс','case-open',next.id,'secondary'):'')+
+    '</div></section>'+
+    '<details class="card case-outcome-details"><summary>Полный разбор ответа</summary>'+
+    '<h3>Что получилось</h3><p>'+esc(feedback.strengths)+'</p>'+
+    '<h3>Что улучшить</h3><p>'+esc(feedback.improvements)+'</p>'+
+    '<p class="muted">Рекомендация ИИ — учебная обратная связь, не решение о допуске к смене.</p></details></div>';
+}
+
 async function caseDetail(id){
   const c=caseCache.find(x=>x.id===id);
   if(!c || !c.published || c.archived){await casesPage();return}
@@ -244,16 +275,13 @@ async function caseDetail(id){
     status.textContent='ИИ анализирует твой ответ. Не закрывай экран.';
     try{
       const f=await api('cases/'+id+'/practice','POST',{answer,request_id:retryRequestId});
-      $('#case-feedback').innerHTML="<article class='card'><h2>Разбор ситуации</h2>"+
-        "<p>"+esc(f.summary)+"</p><h3>Что получилось</h3><p>"+esc(f.strengths)+"</p>"+
-        "<h3>Что улучшить</h3><p>"+esc(f.improvements)+"</p>"+
-        "<h3>Следующий шаг</h3><p>"+esc(f.next_step)+"</p>"+
-        "<p class='muted'>Обратная связь ИИ — учебная, а не решение о допуске.</p></article>";
-      status.textContent='Разбор готов. Ответ сохранён в истории обучения.';
+      // The AI result is already saved; an unavailable catalog must not discard it.
       try{localStorage.removeItem(draftKey)}catch(_){}
       retryRequestId=null;lastAnswer='';
-      button.disabled=false;
-      $('#case-feedback').scrollIntoView({behavior:'smooth'});
+      const courses=f.needs_review&&f.recommended_course_id?
+        await api('learning').catch(()=>[]):[];
+      $('#app').innerHTML=caseOutcome(id,f,courses);
+      window.scrollTo(0,0);
     }catch(err){button.disabled=false;status.textContent='Не получилось получить обратную связь. Ответ не пропал — можно повторить.';error(err)}
   };
 }
