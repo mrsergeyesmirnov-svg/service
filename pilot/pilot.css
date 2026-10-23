@@ -68,3 +68,31 @@ nav button.nav-item.active{background:#e9f0df;color:var(--forest);box-shadow:ins
   .case-scenario .case-prompt{font-size:17px}
   .case-answer-card button.lime-action{width:100%}
 }
+
+
+/* After AI feedback, present a decision instead of a wall of rubric text. */
+.case-outcome{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.case-outcome>button{margin:0 0 20px;font-size:13px}
+.case-outcome-hero{background:#233F34;color:#fff;border-color:#233F34;padding:27px 23px}
+.case-outcome-hero .eyebrow{color:#D5ED89}
+.case-outcome-hero h1{font-size:28px;line-height:1.16;color:#fff;margin:12px 0}
+.case-outcome-hero p{font-size:16px;line-height:1.55;color:#E6F0E7;margin-bottom:0}
+.case-outcome-next{padding:23px 21px;border-color:#D4E0D0}
+.case-outcome-next .eyebrow{color:#56734A}
+.case-outcome-next h2{font-size:21px;margin:12px 0}
+.case-outcome-next p{line-height:1.55}
+.case-outcome-next .case-focus{background:#F1F6E8;border-radius:12px;padding:12px 14px;font-weight:650;color:#233F34}
+.case-outcome-next .case-course-name{font-size:13px;color:#506B4E}
+.case-outcome-next .lime-action{display:block;width:100%;min-height:54px;margin:18px 0 0;background:#D5ED89;color:#233F34}
+.case-outcome-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}
+.case-outcome-actions button{flex:1 1 160px;min-height:46px;font-size:13px}
+.case-outcome-details>summary{cursor:pointer;font-size:15px;font-weight:700;list-style:none}
+.case-outcome-details>summary::-webkit-details-marker{display:none}
+.case-outcome-details h3{font-size:16px;margin:19px 0 7px}
+.case-outcome-details p{font-size:15px;line-height:1.6}
+.case-outcome-details .muted{border-top:1px solid #E6EDE8;padding-top:15px;margin-top:18px}
+@media(max-width:420px){
+ .case-outcome-hero{padding:24px 20px}
+ .case-outcome-hero h1{font-size:25px}
+ .case-outcome-next{padding:20px 18px}
+}
