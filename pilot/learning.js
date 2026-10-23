@@ -8,7 +8,7 @@ function answerLabel(q,a){return q.type==='ingredients'?String(a??''):Array.isAr
 function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]).join(', '):answerLabel(q,q.correct)}
 function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
-let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
+let learningCourses=[],activeCourse,activeAssignment=null,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
 function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
 function courseCard(c){
  const progress=c.chapters?Math.round(100*c.read/c.chapters):0;
@@ -65,6 +65,7 @@ async function learningPage(page){
   '<div class="journey-bottom">'+btn('Вся библиотека →','nav','catalog','secondary')+'</div>';
 }
 async function study(id){
+ activeAssignment=null;
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
  activeCourse=await api('learning/'+id);
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
@@ -73,7 +74,24 @@ async function study(id){
   (!activeCourse.questions.length||activeCourse.history.some(t=>t.passed)))showStudyComplete();
  else showChapter();
 }
-function studyHeader(sub){return `<div class="lesson-top">${btn('← Мой путь','nav','home','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
+async function studyAssignment(id){
+ $('#app').innerHTML='<p role="status">Открываем назначенный курс…</p>';
+ const assignment=await api('assignments/'+id);
+ const course=await api('learning/'+assignment.course_id);
+ activeAssignment=assignment;
+ activeCourse={...course,questions:assignment.questions,history:assignment.history,pass_score:assignment.pass_score};
+ chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
+ if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
+ showChapter();
+}
+async function submitStudyAnswers(){
+ if(!activeAssignment)return api('learning/'+activeCourse.id+'/submit','POST',{request_id:quizRequest,answers:quizAnswers});
+ const id=activeAssignment.id;
+ const result=await api('assignments/'+id+'/submit','POST',{request_id:quizRequest,answers:quizAnswers});
+ activeAssignment=await api('assignments/'+id);
+ return {...result,review:activeAssignment.review.map((q,i)=>({...q,answer:quizAnswers[i]}))};
+}
+function studyHeader(sub){return `<div class="lesson-top">${btn('← Мой путь','nav','home','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small>${activeAssignment?`<small>Обязательно · до ${esc(dateLabel(activeAssignment.deadline))} · осталось попыток: ${Math.max(0,activeAssignment.max_attempts-activeAssignment.history.length)}</small>`:''}</div></div>`}
 function legacyText(text){
  // Display only: original course source remains immutable in PostgreSQL.
  return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
@@ -97,7 +115,7 @@ function showStudyComplete(){
  $('#app').innerHTML=studyHeader('Обучение завершено')+
   '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
   '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+
-  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
+  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):btn('Практика ситуаций →','nav','cases','lime-action'))+
   btn('Повторить материал','chapter-review','','secondary')+'</section>'+
   btn('К моему пути','nav','home','secondary');
  window.scrollTo(0,0);
@@ -189,6 +207,14 @@ function bindDishPractice(courseId,dishId){
  };
 }
 function showStudyQuiz(){
+ if(activeAssignment&&activeAssignment.finished){
+  $('#app').innerHTML=studyHeader('Обязательное обучение')+'<section class="card"><h1>'+
+   (activeAssignment.history.some(t=>t.passed)?'Тест уже сдан':'Попытки закончились')+'</h1><p>'+
+   (activeAssignment.history.some(t=>t.passed)?'Результат сохранён. Можно повторить материал или перейти к практике.':'Обратись к менеджеру. Материал и разбор остаются доступны.')+'</p>'+
+   btn('Повторить материал','chapter-review','','secondary')+btn('Практика','nav','cases','lime-action')+'</section>'+
+   activeAssignment.review.map((q,i)=>reviewQuestion(q,undefined,i)).join('');
+  return;
+ }
  const c=activeCourse,q=c.questions[quizIndex];
  $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<div class="lesson-stage"><span>1 · Изучение</span><span class="stage-active">2 · Тест</span><span>3 · Практика</span></div><progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
  if(quizIndex)$('#study-quiz [data-action]').type='button';
@@ -196,7 +222,7 @@ function showStudyQuiz(){
   e.preventDefault();quizAnswers[quizIndex]=readAnswer(q,new FormData(e.target),'answer');
   if(quizIndex<c.questions.length-1){quizIndex++;showStudyQuiz();return}
   const button=e.target.querySelector('[type=submit]');button.disabled=true;$('#quiz-state').textContent='Сохраняем результат…';
-  try{const r=await api('learning/'+c.id+'/submit','POST',{request_id:quizRequest,answers:quizAnswers});showStudyResult(r)}catch(err){button.disabled=false;$('#quiz-state').textContent='Ответы остались на экране. Можно повторить отправку.';error(err)}
+  try{const r=await submitStudyAnswers();showStudyResult(r)}catch(err){button.disabled=false;$('#quiz-state').textContent='Ответы остались на экране. Можно повторить отправку.';error(err)}
  };
  window.scrollTo(0,0);
 }
@@ -207,10 +233,10 @@ function showStudyResult(r){
   '<h1>'+r.score+'%</h1><p>Проходной балл: '+activeCourse.pass_score+'%. Очный допуск подтверждает руководитель.</p>'+
   (activeCourse.chapters.some(x=>x.kind==='dish')?
    btn('Практика с ИИ →','study-practice','','lime-action'):
-   btn('Вернуться к моему пути','nav','home','lime-action'))+
+   btn('Практика ситуаций →','nav','cases','lime-action'))+
   (!r.passed?btn('Повторить главы','chapter-review','','secondary'):'')+'</section>'+
-  '<details class="card lesson-extra"><summary>Разбор '+r.review.length+' ответов</summary>'+
-  r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>'+
+  '<details '+(!r.passed?'open ':'')+'class="card lesson-extra"><summary>Разбор '+r.review.length+' ответов</summary>'+
+  (r.review.length?r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join(''):'<p>Разбор откроется после сдачи теста или завершения разрешённых попыток. Пока повтори материал перед следующей попыткой.</p>')+'</details>'+
   btn('К моему пути','nav','home','secondary');
  window.scrollTo(0,0);
 }
@@ -266,6 +292,9 @@ document.addEventListener('click',async e=>{
    if(action==='chapter-review'){chapterIndex=0;showChapter()}
   if(action==='chapter-next'){
    const r=await api('learning/'+activeCourse.id+'/read','POST',{chapter_id:activeCourse.chapters[chapterIndex].id});activeCourse.read=r.read;
+   if(activeAssignment&&activeCourse.chapters.every(ch=>activeCourse.read.includes(ch.id))&&!activeAssignment.acknowledged_at){
+    await api('assignments/'+activeAssignment.id+'/acknowledge','POST',{});activeAssignment.acknowledged_at=true;
+   }
    if(chapterIndex<activeCourse.chapters.length-1){chapterIndex++;showChapter()}
    else if(activeCourse.history.some(t=>t.passed)||!activeCourse.questions.length)showStudyComplete();
    else {quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}

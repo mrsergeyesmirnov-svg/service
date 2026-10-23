@@ -55,9 +55,37 @@ async function main() {
   assert.match(mainCode, /Карточки блюд · управление/);
   assert.match(mainCode, /coursePdfPanel\(\)/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261023-ux1/);
-  assert.match(html, /pilot\.js\?v=20261023-ux1/);
-  assert.match(html, /learning\.css\?v=20261023-ux1/);
+  assert.match(html, /learning\.js\?v=20261023-ux2/);
+  assert.match(html, /pilot\.js\?v=20261023-ux2/);
+  assert.match(html, /learning\.css\?v=20261023-ux2/);
+  const calls=[];
+  const assignment={id:42,course_id:7,title:'Required',deadline:'2026-10-24',
+    questions:[{type:'single',question:'Required question',options:['A','B']}],
+    history:[],review:[],max_attempts:2,pass_score:80,finished:false};
+  ctx.api=async (path,method,body)=>{
+    calls.push({path,method,body});
+    if(path==='assignments/42')return assignment;
+    if(path==='learning/7')return {id:7,title:'Course',source:'Synthetic',chapters:[{id:'a',title:'Chapter',body:'Text'}],read:[],questions:[],history:[]};
+    if(path==='assignments/42/submit')return {score:50,passed:false};
+    if(path==='learning/7/submit')return {score:100,passed:true,review:[]};
+    throw Error('Unexpected '+path);
+  };
+  await ctx.studyAssignment(42);
+  assert.match(root.innerHTML,/Chapter/);
+  assert.match(root.innerHTML,/Обязательно/);
+  assert.match(root.innerHTML,/осталось попыток: 2/);
+  vm.runInContext("quizAnswers=[0];quizRequest='request-test'",ctx);
+  await ctx.submitStudyAnswers();
+  assert.equal(calls.filter(x=>x.path==='assignments/42/submit').length,1);
+  assert.equal(calls.filter(x=>x.path==='learning/7/submit').length,0);
+  assignment.finished=true;
+  ctx.showStudyQuiz();
+  assert.match(root.innerHTML,/Попытки закончились/);
+  assert.doesNotMatch(root.innerHTML,/id="study-quiz"/);
+  await ctx.study(7);
+  assert.doesNotMatch(root.innerHTML,/Обязательно/);
+  await ctx.submitStudyAnswers();
+  assert.equal(calls.filter(x=>x.path==='learning/7/submit').length,1);
   console.log("MOJO learner path, manager workspace and cache-busters: OK");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
