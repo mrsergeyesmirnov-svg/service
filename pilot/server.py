@@ -12,6 +12,7 @@ from cases_api import make_router
 from learning import make_learning_router
 from dishes import attach as attach_dishes
 from voice import make_voice_router
+from events import make_events_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -93,6 +94,7 @@ app.include_router(make_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_learning_router(lambda: db(), require, manager, scope, grade, audit))
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
+app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
 
 @app.get('/api/health')
 def health():
