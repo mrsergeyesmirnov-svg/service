@@ -10,37 +10,70 @@ function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article cl
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
 function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
-function courseCard(c){return `<button class="course-row" data-action="study" data-id="${c.id}"><span class="course-symbol">${navSvg('courses')}</span><span><strong>${esc(c.title)}</strong><small>${esc(directions[c.category])} · ${c.read} из ${c.chapters} глав${c.structured?' · карточки блюд':''}</small><progress max="${c.chapters||1}" value="${c.read}"></progress><small>${learningDone(c)?'Завершено':c.best_score!==null?'Тест: '+c.best_score+'%':'Изучить материал'}</small></span><span aria-hidden="true">›</span></button>`}
-function managerCardAccess(){
- if(!isManager())return '<p>'+btn('Каталог блюд','dish-open','','secondary')+'</p>';
- const legacy=learningCourses.filter(c=>c.category==='menu'&&!c.structured);
- return '<section class="card academy-manager-tools" aria-label="Управление карточками блюд">'+
- '<span class="eyebrow">КАБИНЕТ МЕНЕДЖЕРА</span>'+
- '<h2>Карточки блюд</h2>'+
- '<p>Загрузи PDF станционок, проверь составы и фотографии, исправь устаревшие позиции и опубликуй карточки.</p>'+
- btn('Открыть редактор карточек →','dish-open','','lime-action')+
- (legacy.length?'<p class="muted academy-manager-warning">⚠ '+legacy.length+' курсов основного меню пока используют старые тесты. После публикации карточек открой «Управление материалами» → «Собрать главы из карточек», чтобы включить тесты с открытыми ответами и несколькими верными вариантами.</p>':'')+
- '</section>';
+function courseCard(c){
+ const progress=c.chapters?Math.round(100*c.read/c.chapters):0;
+ const label=learningDone(c)?'Завершено':c.read?'В процессе':'Не начато';
+ return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+
+  '<span class="course-symbol">'+navSvg('courses')+'</span><span><strong>'+esc(c.title)+'</strong>'+
+  '<small>'+esc(directions[c.category]||'Обучение')+' · '+c.chapters+' глав</small>'+
+  '<progress max="100" value="'+progress+'" aria-label="Изучено '+progress+'%"></progress>'+
+  '<small>'+label+(c.best_score!==null?' · результат '+c.best_score+'%':'')+'</small></span><span aria-hidden="true">›</span></button>';
 }
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
  if(page==='catalog'){
-  root.innerHTML='<h1>Курсы</h1>'+managerCardAccess()+ (isManager()?`<div class="actions">${btn('Управление материалами','nav','courses','secondary')}${btn('Назначения команды','nav','assignments','secondary')}</div>`:'')+`<div class="filters">${btn('Все','filter','all','active')}${Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')}</div><div id="course-list">${learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся здесь после проверки менеджером.</div>'}</div>`;
+  root.innerHTML='<span class="eyebrow">МОЯ БИБЛИОТЕКА</span><h1>Учебные материалы</h1>'+
+   '<p class="muted learner-intro">Выбирай тему и учись в своём темпе. Все результаты сохраняются.</p>'+
+   '<div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+
+   Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div>'+
+   '<div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся после проверки менеджером.</div>')+'</div>'+
+   '<div class="card practice-entry"><span class="eyebrow">ПРАКТИКА</span><h2>Тренировка ситуаций</h2>'+
+   '<p class="muted">Попробуй ответить гостю своими словами и получи обратную связь.</p>'+
+   btn('Открыть практику →','nav','cases','secondary')+'</div>'+
+   (isManager()?'<div class="manager-entry">'+btn('Управление Академией','open-manager','','secondary')+'</div>':'');
   return;
  }
- const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0),next=learningCourses.find(c=>!learningDone(c));
- const assignments=(await api('assignments')).filter(a=>a.staff_id===user.id&&!done(a));
- root.innerHTML=`<p class="eyebrow">${esc(roles[user.role])} · ${esc(user.restaurant)}</p><h1>Привет, ${esc(user.name)}</h1><section class="card learning-hero"><span class="eyebrow">Программа адаптации MOJO</span><h2>Мой путь в команду</h2><p>Изучи материал и закрепи знания на практике.</p>${total?`<div class="row"><span>Прочитано глав</span><strong>${read} из ${total}</strong></div><progress max="${total}" value="${read}"></progress>`:`<p>Материалы готовятся к публикации.${isManager()?' Черновики доступны в управлении материалами.':''}</p>`}${next?btn('Продолжить обучение →','study',next.id,'lime-action'):btn('Открыть курсы →','nav','catalog','lime-action')}</section><h2>Направления обучения</h2><div class="direction-grid">${Object.entries(directions).map(([k,v])=>`<button class="card direction" data-action="direction" data-id="${k}">${navSvg('courses')}<strong>${v}</strong><small>${learningCourses.filter(c=>c.category===k).length} курсов</small></button>`).join('')}</div>${assignments.length?`<h2>Обязательное обучение</h2>${assignments.slice(0,3).map(a=>`<article class="card"><h3>${esc(a.title)}</h3><p class="muted">До ${esc(dateLabel(a.deadline))}</p>${btn('Открыть назначение','lesson',a.id)}</article>`).join('')}`:''}${isManager()?managerCardAccess()+`<div class="actions">${btn('Назначения команды','nav','assignments','secondary')}${btn('Управление материалами','nav','courses','secondary')}</div>`:''}`;
+ const myAssignments=(await api('assignments')).filter(a=>a.staff_id===user.id&&!a.archived);
+ const pending=myAssignments.filter(a=>!done(a)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
+ const complete=learningCourses.filter(learningDone).length,total=learningCourses.length;
+ const nextCourse=learningCourses.find(c=>!learningDone(c));
+ const urgent=pending[0],next=urgent||nextCourse;
+ const caption=urgent?'Обязательное обучение · до '+dateLabel(urgent.deadline):
+  nextCourse?esc(directions[nextCourse.category]||'Обучение')+' · '+nextCourse.read+' из '+nextCourse.chapters+' глав':'';
+ const progress=total?Math.round(100*complete/total):0;
+ const upcoming=[
+  ...pending.slice(urgent?1:0,3).map(a=>({id:a.id,title:a.title,kind:'assignment',sub:'До '+dateLabel(a.deadline)})),
+  ...learningCourses.filter(c=>!learningDone(c)&&(urgent||!nextCourse||c.id!==nextCourse.id)).slice(0,2).map(c=>({id:c.id,title:c.title,kind:'course',sub:directions[c.category]||'Учебный материал'}))
+ ].slice(0,3);
+ root.innerHTML='<div class="learner-topline"><span class="eyebrow">'+esc(roles[user.role])+' · '+esc(user.restaurant)+'</span>'+
+  (isManager()?btn('Управление →','open-manager','','secondary'):'')+'</div>'+
+  '<h1>Привет, '+esc(user.name)+'</h1>'+
+  '<section class="card journey-progress" aria-label="Прогресс учебной программы">'+
+   '<div class="row"><strong>Мой путь в MOJO</strong><span>'+complete+' из '+total+' курсов</span></div>'+
+   '<progress max="100" value="'+progress+'" aria-label="Завершено '+progress+'% курсов"></progress>'+
+   '<p class="muted">'+(total?'Продвигайся по программе в своём темпе.':'Программа появится после публикации материалов.')+'</p></section>'+
+  (next?'<section class="card journey-next"><span class="eyebrow">СЕЙЧАС В ПРОГРАММЕ</span>'+
+   '<h2>'+esc(next.title)+'</h2><p>'+caption+'</p>'+
+   '<div class="journey-steps"><span>1 · Материал</span><span>2 · Тест</span><span>3 · Практика</span></div>'+
+   btn('Продолжить обучение →',urgent?'lesson':'study',next.id,'lime-action')+'</section>':
+   '<section class="card journey-next"><span class="eyebrow">МОЙ ПУТЬ</span><h2>'+(total?'Все курсы пройдены!':'Начни с библиотеки')+'</h2>'+
+   '<p class="muted">'+(total?'Можешь повторить уроки или потренироваться на кейсах.':'Как только менеджер опубликует курс, он появится здесь.')+'</p>'+
+   btn('Открыть библиотеку →','nav','catalog','lime-action')+'</section>')+
+  (upcoming.length?'<div class="row journey-section-title"><h2>Дальше по программе</h2></div>'+
+   upcoming.map((c,i)=>'<button class="journey-mini" data-action="'+(c.kind==='assignment'?'lesson':'study')+'" data-id="'+c.id+'"><span class="journey-num">'+(i+1)+'</span><span><strong>'+esc(c.title)+'</strong><small>'+esc(c.sub)+'</small></span><span aria-hidden="true">›</span></button>').join(''):'')+
+  '<div class="journey-bottom">'+btn('Вся библиотека →','nav','catalog','secondary')+'</div>';
 }
 async function study(id){
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
  activeCourse=await api('learning/'+id);
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
- if(chapterIndex<0)chapterIndex=0;
- showChapter();
+ if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
+ if(activeCourse.chapters.length&&activeCourse.chapters.every(c=>activeCourse.read.includes(c.id))&&
+  (!activeCourse.questions.length||activeCourse.history.some(t=>t.passed)))showStudyComplete();
+ else showChapter();
 }
-function studyHeader(sub){return `<div class="lesson-top">${btn('←','nav','catalog','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
+function studyHeader(sub){return `<div class="lesson-top">${btn('← Мой путь','nav','home','secondary')}<div><strong>${esc(activeCourse.title)}</strong><small>${sub}</small></div></div>`}
 function legacyText(text){
  // Display only: original course source remains immutable in PostgreSQL.
  return String(text||'').replace(/^===\s*(.*?)\s*===$/gm,'$1').replace(/[▤▥▦]/g,'•');
@@ -59,34 +92,42 @@ function chapterBody(p){
  '<p class="muted">После изучения глав сначала пройди тест. Затем можно презентовать блюдо гостю голосом или текстом и получить разбор ИИ.</p>';
 
 }
+function showStudyComplete(){
+ const c=activeCourse,passed=c.history.some(t=>t.passed);
+ $('#app').innerHTML=studyHeader('Обучение завершено')+
+  '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
+  '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+
+  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
+  btn('Повторить материал','chapter-review','','secondary')+'</section>'+
+  btn('К моему пути','nav','home','secondary');
+ window.scrollTo(0,0);
+}
 function showChapter(){
  const c=activeCourse;
  if(!c.chapters.length){
   $('#app').innerHTML=studyHeader('Материалы на проверке')+
-    '<section class="card"><h1>Уроки временно недоступны</h1>'+
-    '<p>Менеджер проверяет или обновляет карточки блюд. Результаты предыдущих тестов сохранены.</p>'+
-    btn('К каталогу','nav','catalog','secondary')+'</section>';
+   '<section class="card"><h1>Уроки временно недоступны</h1>'+
+   '<p>Менеджер проверяет материалы. История предыдущих тестов сохранена.</p>'+
+   btn('К библиотеке','nav','catalog','secondary')+'</section>';
   return;
  }
  chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
- const p=c.chapters[chapterIndex],finished=c.chapters.every(p=>c.read.includes(p.id));
- const read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ const p=c.chapters[chapterIndex],read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ const last=chapterIndex===c.chapters.length-1,passed=c.history.some(t=>t.passed);
+ const nextLabel=last?(c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
  $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
- '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
- '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Учебный материал')+'</span>'+
- '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
- '<div class="actions chapter-actions">'+
- (chapterIndex?btn('← Предыдущая','chapter-prev','','secondary'):'')+
- btn(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →','chapter-next','', 'lime-action')+'</div>'+
- (p.kind==='dish'?'':'<p class="muted">Источник: '+esc(c.source)+'</p>')+
- (finished&&c.questions.length?'<div class="card"><h2>Готов к проверке знаний?</h2>'+
- '<p>Ты изучил все главы. Теперь закрепи материал тестом.</p>'+
- btn('Пройти тест →','study-quiz')+'</div>':'')+
- '<section class="card"><h2>Мои результаты</h2>'+
- (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
- ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
- '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+ (c.history.length&&c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
- (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
+  '<div class="lesson-stage"><span class="stage-active">1 · Изучение</span><span>2 · Тест</span><span>3 · Практика</span></div>'+
+  '<div class="row lesson-progress"><strong>Глава '+(chapterIndex+1)+' / '+c.chapters.length+'</strong><span>'+read+' прочитано</span></div>'+
+  '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
+  '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Урок')+'</span>'+
+  '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
+  '<div class="actions chapter-actions">'+(chapterIndex?btn('← Назад','chapter-prev','','secondary'):'')+
+  btn(nextLabel,'chapter-next','','lime-action')+'</div>'+
+  (last?'<details class="card lesson-extra"><summary>История обучения и тесты</summary>'+
+   (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
+    ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):'<p>Тест ещё не пройден.</p>')+
+   (c.questions.length?btn('Пройти тест заново','study-quiz','','secondary'):'')+
+   (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'')+'</details>':'');
  if(p.kind==='dish')showDishPhotos();
  window.scrollTo(0,0);
 }
@@ -96,7 +137,7 @@ function showPostTestPractice(dishId){
  const selected=cards.find(x=>x.dish_id===dishId)||cards[0];
  const options=cards.map(x=>'<option value="'+x.dish_id+'"'+(x.dish_id===selected.dish_id?' selected':'')+'>'+esc(x.title)+'</option>').join('');
  $('#app').innerHTML=studyHeader('Практика · после теста')+
- '<section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
+ '<div class="lesson-stage"><span>1 · Изучение</span><span>2 · Тест</span><span class="stage-active">3 · Практика</span></div><section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
  '<h1>Презентуй блюдо гостю</h1>'+
  '<p class="muted">Представь, что гость спрашивает об одном из блюд MOJO. Ты уже изучил материал и прошёл тест. Сейчас попробуй объяснить его своими словами, как за столом.</p>'+
  '<label>Выбери блюдо для презентации<select id="practice-dish-select">'+options+'</select></label>'+
@@ -108,7 +149,13 @@ function showPostTestPractice(dishId){
  '<p id="dish-practice-state" role="status"></p>'+
  '<div id="dish-practice-feedback" aria-live="polite"></div></form></section>'+
  btn('Вернуться к курсу','study',c.id,'secondary');
- $('#practice-dish-select').onchange=e=>showPostTestPractice(Number(e.target.value));
+ $('#practice-dish-select').onchange=e=>{
+    const draft=$('#dish-practice-form [name=answer]').value.trim();
+    if(draft&&!confirm('При смене блюда несохранённый ответ очистится. Продолжить?')){
+      e.target.value=String(selected.dish_id);return;
+    }
+    showPostTestPractice(Number(e.target.value));
+  };
  bindDishPractice(c.id,selected.dish_id);
  bindVoiceInput($('#dish-practice-form'));
  window.scrollTo(0,0);
@@ -143,7 +190,7 @@ function bindDishPractice(courseId,dishId){
 }
 function showStudyQuiz(){
  const c=activeCourse,q=c.questions[quizIndex];
- $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
+ $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<div class="lesson-stage"><span>1 · Изучение</span><span class="stage-active">2 · Тест</span><span>3 · Практика</span></div><progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
  if(quizIndex)$('#study-quiz [data-action]').type='button';
  $('#study-quiz').onsubmit=async e=>{
   e.preventDefault();quizAnswers[quizIndex]=readAnswer(q,new FormData(e.target),'answer');
@@ -155,13 +202,22 @@ function showStudyQuiz(){
 }
 function showStudyResult(r){
  activeCourse.history.unshift({score:r.score,passed:r.passed,created_at:new Date().toISOString()});
- $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section>${activeCourse.chapters.some(x=>x.kind==='dish')?'<section class="card"><h2>Следующий этап — практика</h2><p>Презентуй блюдо гостю голосом или текстом. ИИ оценит содержание и подскажет, что улучшить.</p>'+btn('Практика с ИИ →','study-practice','','lime-action')+'</section>':''}<h2>Разбор ответов</h2>${r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')}${btn('К курсам','nav','catalog','secondary')}`;
+ $('#app').innerHTML=studyHeader('Результат сохранён')+
+  '<section class="card result-card"><p class="eyebrow">'+(r.passed?'Тест сдан':'Есть что повторить')+'</p>'+
+  '<h1>'+r.score+'%</h1><p>Проходной балл: '+activeCourse.pass_score+'%. Очный допуск подтверждает руководитель.</p>'+
+  (activeCourse.chapters.some(x=>x.kind==='dish')?
+   btn('Практика с ИИ →','study-practice','','lime-action'):
+   btn('Вернуться к моему пути','nav','home','lime-action'))+
+  (!r.passed?btn('Повторить главы','chapter-review','','secondary'):'')+'</section>'+
+  '<details class="card lesson-extra"><summary>Разбор '+r.review.length+' ответов</summary>'+
+  r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>'+
+  btn('К моему пути','nav','home','secondary');
  window.scrollTo(0,0);
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
+ if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','chapter-review','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='course-text-editor')await editTextChapters(Number(id));
@@ -207,11 +263,12 @@ document.addEventListener('click',async e=>{
   if(action==='direction'){view='catalog';await render();filterCourses(id)}
   if(action==='filter')filterCourses(id);
   if(action==='chapter-prev'){chapterIndex--;showChapter()}
+   if(action==='chapter-review'){chapterIndex=0;showChapter()}
   if(action==='chapter-next'){
    const r=await api('learning/'+activeCourse.id+'/read','POST',{chapter_id:activeCourse.chapters[chapterIndex].id});activeCourse.read=r.read;
    if(chapterIndex<activeCourse.chapters.length-1){chapterIndex++;showChapter()}
-   else if(activeCourse.questions.length){quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
-   else showChapter();
+   else if(activeCourse.history.some(t=>t.passed)||!activeCourse.questions.length)showStudyComplete();
+   else {quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
   }
   if(action==='study-quiz'){quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
   if(action==='quiz-prev'){const f=new FormData($('#study-quiz'));if(f.has('answer'))quizAnswers[quizIndex]=readAnswer(activeCourse.questions[quizIndex],f,'answer');quizIndex--;showStudyQuiz()}
