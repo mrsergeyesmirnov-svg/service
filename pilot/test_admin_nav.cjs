@@ -50,14 +50,17 @@ async function main() {
   assert.match(root.innerHTML, /data-action="nav" data-id="cases"/);
   assert.doesNotMatch(root.innerHTML, /data-action="dish-open"/);
 
-  assert.match(mainCode, /\['home','Мой путь'\],\['catalog','Библиотека'\],\['profile','Профиль'\]/);
-  assert.match(mainCode, /\['team','Команда'\],\['courses','Программы'\],\['assignments','Результаты'\]/);
+  assert.match(mainCode, /\['home','Мой путь'\],\['catalog','Курсы'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
+  assert.match(mainCode, /\['dashboard','Обзор'\],\['courses','Программы'\],\['team','Команда'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
+  assert.match(mainCode, /managerMode=isManager\(\);view=managerMode\?'dashboard':'home'/);
+  assert.match(mainCode, /data-action="nav" data-id="events"/);
   assert.match(mainCode, /Карточки блюд · управление/);
   assert.match(mainCode, /coursePdfPanel\(\)/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261023-ux2/);
-  assert.match(html, /pilot\.js\?v=20261023-ux2/);
-  assert.match(html, /learning\.css\?v=20261023-ux2/);
+  assert.match(html, /learning\.js\?v=20261023-events1/);
+  assert.match(html, /pilot\.js\?v=20261023-events1/);
+  assert.match(html, /learning\.css\?v=20261023-events1/);
+  assert.match(html, /events\.js\?v=20261023-events1/);
   const calls=[];
   const assignment={id:42,course_id:7,title:'Required',deadline:'2026-10-24',
     questions:[{type:'single',question:'Required question',options:['A','B']}],
@@ -86,6 +89,46 @@ async function main() {
   assert.doesNotMatch(root.innerHTML,/Обязательно/);
   await ctx.submitStudyAnswers();
   assert.equal(calls.filter(x=>x.path==='learning/7/submit').length,1);
+  const navRoot = {innerHTML: "",classList:{toggle(){}},setAttribute(){}};
+  const managerRoot = {innerHTML: ""};
+  const managerCtx = {
+    console,
+    user:{id:999,role:"manager",restaurant:"MOJO",name:"Manager"},
+    managerMode:true,view:"dashboard",
+    $: selector => selector==="#nav"?navRoot:managerRoot,
+    esc:x=>String(x??""),btn,navSvg:()=>"<svg></svg>",
+    isManager(){return ["manager","local"].includes(this.user.role)},
+    done:()=>false,
+    api:async path=>{
+      if(path==="team")return [{active:true}];
+      if(path==="courses")return [{published:true,archived:false}];
+      if(path==="assignments" || path==="events")return [];
+      throw Error("Unknown manager API "+path);
+    }
+  };
+  managerCtx.isManager=()=>["manager","local"].includes(managerCtx.user.role);
+  vm.createContext(managerCtx);
+  const navStart=mainCode.indexOf("function nav(){"),navEnd=mainCode.indexOf("const done=",navStart);
+  assert(navStart>0&&navEnd>navStart);
+  vm.runInContext(mainCode.slice(navStart,navEnd),managerCtx,{filename:"manager-nav"});
+  managerCtx.nav();
+  assert.match(navRoot.innerHTML,/data-id="dashboard"/);
+  assert.match(navRoot.innerHTML,/data-id="events"/);
+  assert.match(navRoot.innerHTML,/Обзор/);
+  await managerCtx.managerDashboard();
+  assert.match(managerRoot.innerHTML,/Обзор Академии/);
+  assert.doesNotMatch(managerRoot.innerHTML,/Мой путь в MOJO/);
+  managerCtx.user.role="local";
+  managerCtx.nav();
+  assert.match(navRoot.innerHTML,/data-id="events"/);
+  assert.doesNotMatch(navRoot.innerHTML,/data-id="team"/);
+  managerCtx.user.role="trainee";
+  managerCtx.managerMode=false;
+  managerCtx.view="home";
+  managerCtx.nav();
+  assert.match(navRoot.innerHTML,/data-id="home"/);
+  assert.match(navRoot.innerHTML,/data-id="events"/);
+  assert.doesNotMatch(navRoot.innerHTML,/data-id="dashboard"/);
   console.log("MOJO learner path, manager workspace and cache-busters: OK");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

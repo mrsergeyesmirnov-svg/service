@@ -168,3 +168,24 @@ CREATE TABLE IF NOT EXISTS case_answer_drafts (
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  PRIMARY KEY(staff_id,case_id)
 );
+
+-- Manager-led in-person lectures and training registrations; additive schema.
+CREATE TABLE IF NOT EXISTS service_events (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL,
+  starts_at TIMESTAMPTZ NOT NULL,
+  restaurant TEXT NOT NULL,
+  created_by BIGINT NOT NULL REFERENCES staff(id),
+  published BOOLEAN NOT NULL DEFAULT FALSE,
+  cancelled BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS service_events_by_venue_date ON service_events(restaurant,starts_at);
+CREATE TABLE IF NOT EXISTS event_signups (
+  event_id BIGINT NOT NULL REFERENCES service_events(id),
+  staff_id BIGINT NOT NULL REFERENCES staff(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(event_id,staff_id)
+);

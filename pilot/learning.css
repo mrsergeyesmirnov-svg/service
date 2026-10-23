@@ -198,3 +198,16 @@ nav button.nav-item.active svg{stroke-width:2.3}
  nav button.nav-item{font-size:11px}
 }
 @media(prefers-reduced-motion:reduce){nav button.nav-item{transition:none}}
+
+/* Role-first management and in-person training calendar. */
+.manager-home-primary{background:#233F34;color:#fff;padding:24px}
+.manager-home-primary .eyebrow{color:#D5ED89}
+.manager-home-primary h2{color:#fff;margin:10px 0}
+.manager-home-primary p.muted{color:#E2EBE1}
+.manager-urgent{border-color:#C4D6B6;background:#F4F9E9}
+.manager-secondary{margin:24px 0;text-align:center}
+.event-card h2{margin:12px 0 6px}
+.event-card .actions{margin-top:16px}
+.event-card .lime-action{margin:14px 0 0}
+.event-card .eyebrow{color:#456951}
+@media(max-width:440px){nav button.nav-item{font-size:10px;min-width:0;letter-spacing:-.15px}nav button.nav-item svg{width:20px;height:20px}nav{gap:1px;padding-left:3px;padding-right:3px}}

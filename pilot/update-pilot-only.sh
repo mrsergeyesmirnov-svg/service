@@ -17,8 +17,9 @@ docker build -t "$RELEASE" -f pilot/Dockerfile .
 docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot
 # Additive Academy-only schema change. Apply after backup, before switching the API.
 # No rows or historical scores are deleted.
-docker exec service-academy-db psql -U academy -d academy -v ON_ERROR_STOP=1 \
-  -c "ALTER TABLE courses ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;"
+# All statements in schema.sql are additive (CREATE IF NOT EXISTS / ALTER ADD IF NOT EXISTS).
+# Apply them to Academy DB only, after backup and isolated integration tests.
+docker exec -i service-academy-db psql -U academy -d academy -v ON_ERROR_STOP=1 < pilot/schema.sql
 echo "Backup, tests and Academy course migration OK. Replacing Academy API only."
 docker rm -f service-academy-api
 run_api() {

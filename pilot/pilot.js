@@ -27,25 +27,57 @@ const navSvg=(name)=>{
     team:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M19 14a5 5 0 0 1 2 4v2"/>',
     courses:'<path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1m0-14c3-2 6-2 9-1v14c-3-1-6-1-9 1V6Z"/>',
     cases:'<path d="M8 5H5a2 2 0 0 0-2 2v13h15V7a2 2 0 0 0-2-2h-3M8 3h5v4H8zM7 11h7M7 15h9"/>',
+    events:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>',
+    dashboard:'<path d="M3 12h8V3H3zM14 3h7v6h-7zM14 12h7v9h-7zM3 15h8v6H3z"/>',
     profile:'<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'
   };
   return '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+paths[name]+'</svg>';
 };
 function nav(){
-  const managerSection=isManager()&&managerMode;
-  const tabs=managerSection
-    ?[['team','Команда'],['courses','Программы'],['assignments','Результаты']]
-    :[['home','Мой путь'],['catalog','Библиотека'],['profile','Профиль']];
-  $('#nav').classList.toggle('manager-nav',managerSection);
-  $('#nav').setAttribute('aria-label',managerSection?'Управление Академией':'Разделы обучения');
+  const m=isManager()&&managerMode;
+  const tabs=m?(user.role==='manager'
+    ?[['dashboard','Обзор'],['courses','Программы'],['team','Команда'],['events','Мероприятия'],['profile','Профиль']]
+    :[['dashboard','Команда'],['courses','Обучение'],['events','Мероприятия'],['profile','Профиль']])
+    :[['home','Мой путь'],['catalog','Курсы'],['events','Мероприятия'],['profile','Профиль']];
+  $('#nav').classList.toggle('manager-nav',m);
+  $('#nav').setAttribute('aria-label',m?'Управление Академией':'Разделы обучения');
   $('#nav').innerHTML=tabs.map(([id,label])=>{
-    const active=view===id||(id==='catalog'&&!managerSection&&view==='cases')||(managerSection&&id==='courses'&&['dishes','cases'].includes(view));
+    const active=view===id||(id==='catalog'&&!m&&view==='cases')||(m&&id==='courses'&&['dishes','cases'].includes(view));
     return '<button class="nav-item '+(active?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(active?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>';
   }).join('');
 }
 function workspaceHeader(title,subtitle){
-  return '<div class="workspace-head">'+btn('← К обучению','leave-manage','','secondary')+
+  return '<div class="workspace-head">'+btn('← Обзор','nav','dashboard','secondary')+
     '<span class="eyebrow">MOJO / УПРАВЛЕНИЕ</span><h1>'+esc(title)+'</h1><p class="muted">'+esc(subtitle)+'</p></div>';
+}
+async function managerDashboard(){
+  const [team,courses,assignments,events]=await Promise.all([api('team'),api('courses'),api('assignments'),api('events')]);
+  const pending=team.filter(s=>!s.active).length,active=team.filter(s=>s.active).length;
+  const actual=assignments.filter(a=>!a.archived),complete=actual.filter(done).length;
+  const approved=courses.filter(c=>c.published&&!c.archived).length,upcoming=events.filter(e=>e.published&&!e.cancelled&&new Date(e.starts_at)>new Date());
+  $('#app').innerHTML='<span class="eyebrow">MOJO / АКАДЕМИЯ СЕРВИСА</span><h1>'+(user.role==='manager'?'Обзор Академии':'Моя команда')+'</h1>'+
+    '<p class="muted">Обучение, сотрудники и ближайшие мероприятия.</p>'+
+    '<div class="manager-stats"><div><strong>'+active+'</strong><span>сотрудников</span></div>'+
+      '<div><strong>'+approved+'</strong><span>программ</span></div>'+
+      '<div><strong>'+complete+'/'+actual.length+'</strong><span>выполнено</span></div></div>'+
+    (pending?'<div class="card manager-urgent"><h2>Заявки на доступ: '+pending+'</h2>'+
+      '<p class="muted">Проверь личности сотрудников перед подтверждением.</p>'+btn('Проверить заявки','nav','team','lime-action')+'</div>':'')+
+    '<section class="card manager-home-primary"><span class="eyebrow">СОЗДАНИЕ ПРОГРАММЫ</span>'+
+      '<h2>Обучение по материалам MOJO</h2><p class="muted">Загрузи PDF, проверь главы и предложения ИИ, затем опубликуй курс.</p>'+
+      btn('Открыть программы →','nav','courses','lime-action')+'</section>'+
+    '<div class="manager-tools"><button class="manager-tool" data-action="nav" data-id="team"><strong>Команда →</strong>'+
+      '<small>Доступы и подтверждения</small></button>'+
+      '<button class="manager-tool" data-action="nav" data-id="assignments"><strong>Результаты →</strong>'+
+      '<small>Прогресс и попытки</small></button>'+
+      '<button class="manager-tool" data-action="nav" data-id="events"><strong>Мероприятия →</strong>'+
+      '<small>Тренинги и запись</small></button>'+
+      '<button class="manager-tool" data-action="manager-cases"><strong>Практика →</strong>'+
+      '<small>Открытые кейсы с ИИ</small></button></div>'+
+    '<h2>Ближайшие мероприятия</h2>'+
+    (upcoming.length?upcoming.slice(0,2).map(e=>'<div class="card"><strong>'+esc(e.title)+'</strong>'+
+      '<p class="muted">'+esc(new Date(e.starts_at).toLocaleString('ru-RU'))+' · '+esc(e.location)+'</p></div>').join(''):
+     '<p class="muted">Опубликованных встреч пока нет.</p>')+
+    '<p class="manager-secondary">'+btn('Открыть мой учебный путь','leave-manage','','secondary')+'</p>';
 }
 const done=a=>a.questions?a.passed:!!a.acknowledged_at;
 const dateLabel=s=>new Date(s+'T12:00:00').toLocaleDateString('ru-RU');
@@ -54,6 +86,8 @@ const qualityNotice=c=>(c.quality_issues?.length?'<div class="card" role="note">
 const status=a=>a.archived?'Архив':a.questions?(a.passed?'Тест сдан':a.attempts?'Нужна пересдача':a.acknowledged_at?'Можно сдавать тест':'Не начато'):(a.acknowledged_at?'Ознакомлен':'Не начато');
 async function render(){nav();const root=$('#app');
 if(view==='home'||view==='catalog'){await learningPage(view);return}
+if(view==='dashboard'){await managerDashboard();return}
+if(view==='events'){await eventsPage();return}
 if(view==='dishes'){await dishesPage();return}
 if(view==='cases'){await casesPage();return}
 if(view==='profile'){root.innerHTML=`<h1>${esc(user.name)}</h1><div class="card"><p>${esc(roles[user.role])} · ${esc(user.restaurant)}</p><p>Телефон: ${esc(user.phone||'не указан')}</p><p>Чтобы добавить номер, отправьте боту /phone.</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>${isManager()?'<div class="card"><h2>Управление Академией</h2><p>Программы, сотрудники и результаты — в одном кабинете.</p>'+btn('Открыть кабинет менеджера','open-manager','','lime-action')+'</div>':''}`;return}
@@ -84,7 +118,8 @@ async function programsPage(){
     const primary=c.archived?btn('Создать новую версию','copy',c.id,'secondary'):
       c.published?btn('Назначить сотрудникам','assign',c.id,'lime-action'):
         btn('Редактировать','edit',c.id,'lime-action')+btn('Проверить и опубликовать','publish',c.id,'secondary');
-    const extras=btn('Предпросмотр','preview',c.id,'secondary')+
+    const extras=(!c.published&&!c.archived&&!c.questions.length?btn('Предложить тесты и кейсы (ИИ)','ai-generate',c.id,'secondary'):'')+
+      btn('Предпросмотр','preview',c.id,'secondary')+
       (!c.archived?btn('Собрать главы из карточек','course-map',c.id,'secondary')+btn('Редактор текстовых глав','course-text-editor',c.id,'secondary'):'')+
       (c.archived?'':c.published?btn('Создать новую версию','copy',c.id,'secondary')+btn('Архивировать курс','archive-course',c.id,'secondary'):btn('Архивировать черновик','archive-course',c.id,'secondary'));
     return '<details class="card manager-list manager-course"><summary><span><strong>'+esc(c.title)+'</strong><small>'+c.questions.length+' вопросов'+(c.quality_issues?.length?' · ⚠ проверить '+c.quality_issues.length:'')+'</small></span><span class="badge">'+(c.archived?'Архив':c.published?'Опубликовано':'Черновик')+'</span></summary>'+
@@ -109,8 +144,8 @@ function editor(){ $('#app').innerHTML=`<h1>${draft.id?'Редактироват
 async function lesson(id){await studyAssignment(id)}
 
 async function assignForm(id){const team=await api('team');$('#app').innerHTML=`<h1>Назначить обучение</h1><form id="assign" class="card"><label>Срок<input type="date" name="deadline" required></label><label>Число попыток<input name="max_attempts" type="number" min="1" max="20" value="3" required></label><h2>Сотрудники</h2>${team.filter(s=>(['trainee','waiter'].includes(s.role)||s.id===user.id)&&s.active).map(s=>`<label><input type="checkbox" name="staff" value="${s.id}">${esc(s.name)}</label>`).join('')}<p>После назначения бот отправит каждому выбранному сотруднику сообщение в личный чат.</p><button>Назначить и уведомить</button></form>`;$('#assign').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;try{const f=new FormData(e.target);const r=await api('assignments','POST',{course_id:Number(id),staff_ids:f.getAll('staff').map(Number),deadline:f.get('deadline'),max_attempts:Number(f.get('max_attempts'))});view='assignments';await render();if(!r.created.length)alert('Этот курс уже назначен выбранным сотрудникам.')}catch(e){b.disabled=false;error(e)}}}
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const {action,id}=b.dataset;try{switch(action){case'nav':if(isManager()&&['team','courses','assignments'].includes(id))managerMode=true;else if(['home','catalog','profile'].includes(id))managerMode=false;view=id;await render();break;case'open-manager':managerMode=true;view='courses';await render();break;case'leave-manage':managerMode=false;view='home';await render();break;case'manager-cases':managerMode=true;view='cases';nav();await casesPage();break;case'case-results':await caseResults(Number(id));break;case'case-new':caseEditor();break;case'case-review':caseReview(Number(id));break;case'case-edit':caseEditor(Number(id));break;case'case-open':await caseDetail(Number(id));break;case'case-publish':if(confirm('Материал, источник и критерии проверены менеджером?')){await api('cases/'+id+'/publish','POST',{reviewed:true});await casesPage()}break;case'case-archive':if(confirm('Скрыть старую опубликованную версию от сотрудников? История ответов сохранится.')){await api('cases/'+id+'/archive','POST',{confirmed:true});await casesPage()}break;case'invite':{const r=await api('invites','POST',{role:$('#invite-role').value});$('#invite-result').innerHTML=`<p>Одноразовая ссылка, действует 7 дней:</p><input readonly value="${esc(r.url)}"><p class="muted">Отправьте сотруднику. Он должен открыть ссылку и нажать «Старт». После этого проверь его Telegram ID в разделе «Команда» и подтверди доступ.</p>`;break}case'approve-staff':if(confirm('Ты лично проверил, кому принадлежит этот Telegram ID? После подтверждения сотрудник получит доступ к внутренним материалам.')){await api('team/'+id+'/approve','POST',{});await render()}break;case'promote':if(confirm('Подтвердить перевод сотрудника в официанты после очного допуска?')){await api('team/'+id+'/role','POST',{role:'waiter'});await render()}break;case'preview':previewCourse(cache.find(c=>c.id==id));break;case'new':draft={title:'',body:'',source:'',kind:'service',pass_score:80,questions:[]};editor();break;case'edit':case'copy':draft=structuredClone(cache.find(x=>x.id==id));if(action==='copy')delete draft.id;editor();break;case'add-q':readDraft();draft.questions.push({question:'',options:['',''],correct:0,explanation:'',source:''});editor();break;case'remove-q':readDraft();draft.questions.splice(Number(id),1);editor();break;case'publish':{const c=cache.find(x=>x.id==id);$('#app').innerHTML=`<h1>Проверка перед публикацией</h1>${qualityNotice(c)}<div class="card"><h2>${esc(c.title)}</h2><div class="body">${esc(c.body)}</div></div>${c.questions.map(q=>`<div class="card"><h3>${esc(q.question)}</h3><ol>${(q.options||[]).map((v,j)=>`<li>${esc(v)}${(Array.isArray(q.correct)?q.correct.includes(j):j===q.correct)?' — правильный':''}</li>`).join('')}${q.type==='ingredients'?'<li>'+esc(correctLabel(q))+'</li>':''}</ol><p>${esc(q.explanation)}</p><p class="muted">${esc(q.source)}</p></div>`).join('')}${btn('Материал и ответы проверены — опубликовать','approve',id)}`;break}case'approve':await api('courses/'+id+'/publish','POST',{reviewed:true});await render();break;case'archive-course':if(confirm('Архивировать этот курс вместе со старым тестом? Сотрудники больше не увидят материал и не смогут сдать ранее назначенный тест. История попыток останется в базе. Для новой программы создай новую версию.')){await api('courses/'+id+'/archive','POST',{});await render()}break;case'assign':await assignForm(id);break;case'lesson':await lesson(id);break;case'ack':await api('assignments/'+id+'/acknowledge','POST',{});await lesson(id);break;case'results':{const r=await api('assignments/'+id+'/results');$('#app').innerHTML='<h1>Ответы сотрудника</h1>'+r.attempts.map(t=>`<div class="card"><h2>${t.score}% · ${t.passed?'Сдано':'Не сдано'}</h2><p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))}</p>${r.questions.map((q,i)=>`<p><b>${esc(q.question)}</b><br>Ответ: ${esc(answerLabel(q,t.answers[i]))}<br>Правильно: ${esc(correctLabel(q))}</p>`).join('')}</div>`).join('');break}}}catch(e){error(e)}});
-(async()=>{try{const h=await api('health');if(!h.telegram_configured)throw Error('Подключение пилота ещё не завершено. Администратор настраивает бота.');const tg=window.Telegram?.WebApp;if(!tg?.initData)throw Error('Откройте Академию через личный чат с @skill_mojo_bot. Для первого входа нужна ссылка-приглашение.');tg.ready();tg.expand();const r=await api('login','POST',{initData:tg.initData});token=r.token;user=r.user;await render();const aid=new URLSearchParams(location.search).get('assignment');if(aid)await lesson(Number(aid))}catch(e){$('#app').innerHTML=`<h1>Академия сервиса</h1><div class="card"><p>${esc(e.message)}</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`}})();
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const {action,id}=b.dataset;try{switch(action){case'nav':if(isManager()&&['dashboard','team','courses','assignments'].includes(id))managerMode=true;else if(['home','catalog'].includes(id))managerMode=false;view=id;await render();break;case'open-manager':managerMode=true;view='dashboard';await render();break;case'ai-generate':await generateCourseProposal(Number(id));break;case'leave-manage':managerMode=false;view='home';await render();break;case'manager-cases':managerMode=true;view='cases';nav();await casesPage();break;case'case-results':await caseResults(Number(id));break;case'case-new':caseEditor();break;case'case-review':caseReview(Number(id));break;case'case-edit':caseEditor(Number(id));break;case'case-open':await caseDetail(Number(id));break;case'case-publish':if(confirm('Материал, источник и критерии проверены менеджером?')){await api('cases/'+id+'/publish','POST',{reviewed:true});await casesPage()}break;case'case-archive':if(confirm('Скрыть старую опубликованную версию от сотрудников? История ответов сохранится.')){await api('cases/'+id+'/archive','POST',{confirmed:true});await casesPage()}break;case'invite':{const r=await api('invites','POST',{role:$('#invite-role').value});$('#invite-result').innerHTML=`<p>Одноразовая ссылка, действует 7 дней:</p><input readonly value="${esc(r.url)}"><p class="muted">Отправьте сотруднику. Он должен открыть ссылку и нажать «Старт». После этого проверь его Telegram ID в разделе «Команда» и подтверди доступ.</p>`;break}case'approve-staff':if(confirm('Ты лично проверил, кому принадлежит этот Telegram ID? После подтверждения сотрудник получит доступ к внутренним материалам.')){await api('team/'+id+'/approve','POST',{});await render()}break;case'promote':if(confirm('Подтвердить перевод сотрудника в официанты после очного допуска?')){await api('team/'+id+'/role','POST',{role:'waiter'});await render()}break;case'preview':previewCourse(cache.find(c=>c.id==id));break;case'new':draft={title:'',body:'',source:'',kind:'service',pass_score:80,questions:[]};editor();break;case'edit':case'copy':draft=structuredClone(cache.find(x=>x.id==id));if(action==='copy')delete draft.id;editor();break;case'add-q':readDraft();draft.questions.push({question:'',options:['',''],correct:0,explanation:'',source:''});editor();break;case'remove-q':readDraft();draft.questions.splice(Number(id),1);editor();break;case'publish':{const c=cache.find(x=>x.id==id);$('#app').innerHTML=`<h1>Проверка перед публикацией</h1>${qualityNotice(c)}<div class="card"><h2>${esc(c.title)}</h2><div class="body">${esc(c.body)}</div></div>${c.questions.map(q=>`<div class="card"><h3>${esc(q.question)}</h3><ol>${(q.options||[]).map((v,j)=>`<li>${esc(v)}${(Array.isArray(q.correct)?q.correct.includes(j):j===q.correct)?' — правильный':''}</li>`).join('')}${q.type==='ingredients'?'<li>'+esc(correctLabel(q))+'</li>':''}</ol><p>${esc(q.explanation)}</p><p class="muted">${esc(q.source)}</p></div>`).join('')}${btn('Материал и ответы проверены — опубликовать','approve',id)}`;break}case'approve':await api('courses/'+id+'/publish','POST',{reviewed:true});await render();break;case'archive-course':if(confirm('Архивировать этот курс вместе со старым тестом? Сотрудники больше не увидят материал и не смогут сдать ранее назначенный тест. История попыток останется в базе. Для новой программы создай новую версию.')){await api('courses/'+id+'/archive','POST',{});await render()}break;case'assign':await assignForm(id);break;case'lesson':await lesson(id);break;case'ack':await api('assignments/'+id+'/acknowledge','POST',{});await lesson(id);break;case'results':{const r=await api('assignments/'+id+'/results');$('#app').innerHTML='<h1>Ответы сотрудника</h1>'+r.attempts.map(t=>`<div class="card"><h2>${t.score}% · ${t.passed?'Сдано':'Не сдано'}</h2><p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))}</p>${r.questions.map((q,i)=>`<p><b>${esc(q.question)}</b><br>Ответ: ${esc(answerLabel(q,t.answers[i]))}<br>Правильно: ${esc(correctLabel(q))}</p>`).join('')}</div>`).join('');break}}}catch(e){error(e)}});
+(async()=>{try{const h=await api('health');if(!h.telegram_configured)throw Error('Подключение пилота ещё не завершено. Администратор настраивает бота.');const tg=window.Telegram?.WebApp;if(!tg?.initData)throw Error('Откройте Академию через личный чат с @skill_mojo_bot. Для первого входа нужна ссылка-приглашение.');tg.ready();tg.expand();const r=await api('login','POST',{initData:tg.initData});token=r.token;user=r.user;managerMode=isManager();view=managerMode?'dashboard':'home';await render();const aid=new URLSearchParams(location.search).get('assignment');if(aid)await lesson(Number(aid))}catch(e){$('#app').innerHTML=`<h1>Академия сервиса</h1><div class="card"><p>${esc(e.message)}</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`}})();
 
 function previewCourse(c){
  $('#app').innerHTML=btn('К материалам','nav','courses','secondary')+'<p class="badge">Предпросмотр · результат не сохраняется</p><h1>'+esc(c.title)+'</h1><article class="card body">'+esc(c.body)+'</article><form id="preview-quiz">'+c.questions.map((q,i)=>'<article class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'q'+i)+'</article>').join('')+'<button>Посмотреть разбор</button></form><div id="preview-result"></div>';
@@ -227,13 +262,40 @@ async function caseDetail(id){
 function coursePdfPanel(){
  return '<section class="card academy-manager-tools"><span class="eyebrow">ОБЫЧНЫЙ PDF · БЕЗ JSON</span>'+
  '<h2>Создать курс из PDF</h2>'+
- '<p>Загрузи методичку или сервисбук. Главы появятся в черновике, а тест добавишь и проверишь в редакторе. Сотрудникам ничего не публикуется автоматически.</p>'+
+ '<p>Загрузи методичку или сервисбук. Сначала появятся учебные главы, затем ИИ предложит тесты и открытые кейсы. Всё остаётся черновиком до проверки и публикации менеджером.</p>'+
  '<form id="course-pdf-form">'+
  '<label>Название курса<input name="title" required maxlength="180" placeholder="Например, WOW — ценности MOJO"></label>'+
  '<label>Учебный PDF<input name="document" type="file" accept="application/pdf,.pdf" required></label>'+
  '<button type="submit" class="lime-action">Загрузить и создать главы →</button>'+
  '<p role="status" id="course-pdf-status" class="muted">PDF до 20 МБ и 55 страниц. Для фотографий и составов блюд используй редактор карточек.</p>'+
  '</form></section>';
+}
+async function generateCourseProposal(cid){
+  $('#app').innerHTML='<h1>ИИ готовит программу</h1>'+
+    '<section class="card"><h2>Материал сохранён</h2>'+
+    '<p role="status">По учебным главам создаются черновики вопросов и практических ситуаций. Итог обязательно проверит менеджер.</p>'+
+    btn('Вернуться к программам','nav','courses','secondary')+'</section>';
+  try{
+    const result=await api('learning/'+cid+'/generate','POST',{});
+    cache=await api('courses');
+    $('#app').innerHTML='<h1>Предложения готовы</h1><section class="card">'+
+      '<p class="eyebrow">ЕЩЁ НЕ ОПУБЛИКОВАНО</p>'+
+      '<h2>'+result.questions+' вопросов и '+result.cases+' практических кейсов</h2>'+
+      '<p>Проверь вопросы, варианты, факты, источники и критерии кейсов. ИИ может ошибаться. Сотрудники ничего не увидят до утверждения.</p>'+
+      (result.warnings?.length?'<p class="muted">Автопроверка: '+result.warnings.length+' предупреждений. Исправь их в редакторе.</p>':'')+
+      '<div class="actions">'+btn('Проверить тест','edit',cid,'lime-action')+
+      btn('Проверить кейсы','manager-cases','','secondary')+
+      btn('Назад к программам','nav','courses','secondary')+'</div></section>';
+  }catch(err){
+    $('#app').innerHTML='<h1>Главы сохранены</h1><section class="card">'+
+      '<h2>ИИ не подготовил предложения</h2>'+
+      '<p>'+esc(err.message)+'</p>'+
+      '<p class="muted">Материал остался в закрытом черновике. Проверь главы и повтори генерацию позже. Никаких курсов или тестов автоматически не опубликовано.</p>'+
+      '<div class="actions">'+btn('Повторить ИИ-генерацию','ai-generate',cid,'lime-action')+
+      btn('Проверить главы','course-text-editor',cid,'secondary')+
+      btn('К программам','nav','courses','secondary')+'</div></section>';
+  }
+  window.scrollTo(0,0);
 }
 function bindCoursePdfImport(){
  const form=$('#course-pdf-form');if(!form)return;
@@ -262,11 +324,12 @@ function bindCoursePdfImport(){
    $('#app').innerHTML='<h1>'+(result.duplicate?'Черновик уже существует':'PDF загружен')+'</h1>'+
     '<section class="card"><h2>'+esc(title)+'</h2>'+
     '<p>Глав: '+result.chapters+'. Материал сохранён как черновик — сотрудники его пока не увидят.</p>'+
-    '<p>Проверь текст глав, затем создай содержательные вопросы и нажми «Проверить и опубликовать» в кабинете менеджера.</p>'+
+    '<p>Материал готов к проверке. ИИ предложит тест и кейсы; перед публикацией проверь их на соответствие исходному PDF.</p>'+
     '<div class="actions">'+btn('Проверить и отредактировать главы','course-text-editor',result.id,'lime-action')+
-    btn('Создать тест','edit',result.id,'secondary')+
+    btn('Предложить тест и кейсы (ИИ)','ai-generate',result.id,'secondary')+
     btn('Вернуться к управлению','nav','courses','secondary')+'</div></section>';
    window.scrollTo(0,0);
+   if(!result.duplicate)await generateCourseProposal(result.id);
   }catch(err){status.textContent=err.name==='AbortError'?'Превышено время ожидания. Проверь список черновиков перед повтором.':err.message;}
   finally{clearTimeout(timer);button.disabled=false;}
  };

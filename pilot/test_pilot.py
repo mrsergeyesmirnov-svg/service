@@ -35,6 +35,27 @@ class Core(unittest.TestCase):
         self.assertTrue(chapters[1]["title"].startswith("2. Involvement"))
         self.assertEqual(chapters[2]["source"],"WOW.pdf, стр. 2")
 
+    def test_ai_generation_schema_rejects_unsupported_chapters(self):
+        from course_ai import validate_generated
+        lesson=[{'title':'WOW','body':'Ask the guest first and listen.',
+                 'source':'Synthetic source, стр. 1'}]
+        question={'type':'multiple','question':'Which actions support the guest?',
+                  'options':['Ask','Listen','Guess','Ignore'],'correct':[0,1],
+                  'explanation':'Listen before recommending.','chapter':0}
+        scenario={'title':'Guest asks for advice','competency':'Care',
+                  'action':'Ask and listen','scenario':'A guest is undecided. What will you do?',
+                  'criteria':['Clarify the request','Listen attentively'],'chapter':0}
+        questions,cases=validate_generated({'questions':[question]*3,'cases':[scenario]},lesson)
+        self.assertEqual(len(questions),3)
+        self.assertEqual(questions[0]['source'],'Synthetic source, стр. 1')
+        self.assertEqual(cases[0]['source'],'Synthetic source, стр. 1')
+        wrong=dict(question,chapter=4)
+        with self.assertRaises(ValueError):
+            validate_generated({'questions':[wrong]*3,'cases':[scenario]},lesson)
+        wrong=dict(question,correct=[99])
+        with self.assertRaises(server.HTTPException):
+            validate_generated({'questions':[wrong]*3,'cases':[scenario]},lesson)
+
     def test_wow_smile_pdf_courses_are_service(self):
         from learning import category
         for name in ['WOW — ценности MOJO','SMILE — философия гостеприимства','ВАУ — атмосфера']:
@@ -105,6 +126,67 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_event_creation_role_scope_and_signups(self):
+        from datetime import datetime, timedelta, timezone
+        manager=self.auth(999);student=self.auth(101);other=self.auth(103)
+        starts=(datetime.now(timezone.utc)+timedelta(days=3)).isoformat()
+        payload={"title":"Service lesson","description":"Practice","location":"MOJO training room","starts_at":starts}
+        self.assertEqual(self.client.post('/api/events',json=payload,headers=student).status_code,403)
+        created=self.client.post('/api/events',json=payload,headers=manager)
+        self.assertEqual(created.status_code,200,created.text)
+        eid=created.json()['id']
+        self.assertEqual(self.client.get('/api/events',headers=student).json(),[])
+        self.assertEqual(self.client.post(f'/api/events/{eid}/publish',headers=other).status_code,403)
+        self.assertEqual(self.client.post(f'/api/events/{eid}/publish',headers=manager).status_code,200)
+        rows=self.client.get('/api/events',headers=student).json()
+        self.assertEqual(len(rows),1)
+        self.assertNotIn('created_by',rows[0])
+        self.assertEqual(self.client.post(f'/api/events/{eid}/signup',headers=other).status_code,404)
+        self.assertEqual(self.client.get(f'/api/events/{eid}/participants',headers=student).status_code,403)
+        self.assertEqual(self.client.post(f'/api/events/{eid}/signup',headers=student).status_code,200)
+        self.assertEqual(self.client.post(f'/api/events/{eid}/signup',headers=student).status_code,200)
+        people=self.client.get(f'/api/events/{eid}/participants',headers=manager)
+        self.assertEqual(len(people.json()),1)
+        self.assertEqual(people.json()[0]['id'],101)
+        self.assertEqual(self.client.delete(f'/api/events/{eid}/signup',headers=student).status_code,200)
+        self.assertEqual(self.client.get(f'/api/events/{eid}/participants',headers=manager).json(),[])
+        self.assertEqual(self.client.post(f'/api/events/{eid}/cancel',headers=manager).status_code,200)
+        self.assertEqual(self.client.get('/api/events',headers=student).json(),[])
+
+    def test_pdf_ai_proposals_are_private_unpublished_and_once_only(self):
+        from psycopg.types.json import Jsonb
+        manager=self.auth(999);student=self.auth(101);other=self.auth(103)
+        with server.db() as c:
+            cid=c.execute("""INSERT INTO courses
+              (author,restaurant,title,kind,body,source,questions,pass_score)
+              VALUES(999,'MOJO','Synthetic WOW','service','Lesson','Synthetic.pdf','[]'::jsonb,80)
+              RETURNING id""").fetchone()['id']
+            c.execute("INSERT INTO course_text_outline(course_id,chapters) VALUES(%s,%s)",
+                (cid,Jsonb([{'title':'Care','body':'Ask the guest and listen carefully.','source':'Synthetic.pdf, стр. 1'}])))
+        route=f'/api/learning/{cid}/generate'
+        self.assertEqual(self.client.post(route,headers=student).status_code,403)
+        self.assertEqual(self.client.post(route,headers=other).status_code,403)
+        q={'type':'single','question':'How should you respond?','options':['Listen','Ignore','Rush'],
+           'correct':0,'explanation':'Listen first','source':'Synthetic.pdf, стр. 1'}
+        case={'title':'Guest needs help','competency':'Attentive service','action':'Ask the guest',
+              'scenario':'The guest asks for guidance. Explain your actions.','source':'Synthetic.pdf, стр. 1',
+              'criteria':['Clarify expectations','Avoid invented claims']}
+        with patch('learning.generate_review_drafts',return_value=([q],[case])) as fake:
+            proposed=self.client.post(route,headers=manager)
+            self.assertEqual(proposed.status_code,200,proposed.text)
+            self.assertTrue(proposed.json()['review_required'])
+            self.assertEqual(proposed.json()['cases'],1)
+            self.assertEqual(fake.call_count,1)
+        self.assertEqual(self.client.post(route,headers=manager).status_code,409)
+        material=next(c for c in self.client.get('/api/courses',headers=manager).json() if c['id']==cid)
+        self.assertFalse(material['published'])
+        self.assertEqual(len(material['questions']),1)
+        self.assertEqual(self.client.get(f'/api/learning/{cid}',headers=student).status_code,404)
+        self.assertEqual(self.client.get('/api/cases',headers=student).json(),[])
+        drafts=self.client.get('/api/cases',headers=manager).json()
+        self.assertEqual(len(drafts),1)
+        self.assertFalse(drafts[0]['published'])
+
     def test_service_manager_uploads_pdf_as_editable_draft_and_adds_test(self):
         import fitz
         from course_pdf import course_chapters_from_pdf
