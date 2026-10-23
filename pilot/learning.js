@@ -41,7 +41,7 @@ async function learningPage(page){
    '<div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Утверждённые курсы появятся после проверки менеджером.</div>')+'</div>'+
    '<div class="card practice-entry"><span class="eyebrow">ПРАКТИКА</span><h2>Тренировка ситуаций</h2>'+
    '<p class="muted">Попробуй ответить гостю своими словами и получи обратную связь.</p>'+
-   btn('Открыть практику →','nav','cases','','secondary')+'</div>'+
+   btn('Открыть практику →','nav','cases','secondary')+'</div>'+
    (isManager()?'<div class="manager-entry">'+btn('Управление Академией','open-manager','','secondary')+'</div>':'');
   return;
  }
@@ -73,7 +73,7 @@ async function learningPage(page){
    btn('Открыть библиотеку →','nav','catalog','lime-action')+'</section>')+
   (upcoming.length?'<div class="row journey-section-title"><h2>Дальше по программе</h2></div>'+
    upcoming.map((c,i)=>'<button class="journey-mini" data-action="'+(c.kind==='assignment'?'lesson':'study')+'" data-id="'+c.id+'"><span class="journey-num">'+(i+1)+'</span><span><strong>'+esc(c.title)+'</strong><small>'+esc(c.sub)+'</small></span><span aria-hidden="true">›</span></button>').join(''):'')+
-  '<div class="journey-bottom">'+btn('Вся библиотека →','nav','catalog','','secondary')+'</div>';
+  '<div class="journey-bottom">'+btn('Вся библиотека →','nav','catalog','secondary')+'</div>';
 }
 async function study(id){
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
@@ -103,34 +103,42 @@ function chapterBody(p){
  '<p class="muted">После изучения глав сначала пройди тест. Затем можно презентовать блюдо гостю голосом или текстом и получить разбор ИИ.</p>';
 
 }
+function showStudyComplete(){
+ const c=activeCourse,passed=c.history.some(t=>t.passed);
+ $('#app').innerHTML=studyHeader('Обучение завершено')+
+  '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
+  '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+
+  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
+  btn('Повторить материал','chapter-review','','secondary')+'</section>'+
+  btn('К моему пути','nav','home','secondary');
+ window.scrollTo(0,0);
+}
 function showChapter(){
  const c=activeCourse;
  if(!c.chapters.length){
   $('#app').innerHTML=studyHeader('Материалы на проверке')+
-    '<section class="card"><h1>Уроки временно недоступны</h1>'+
-    '<p>Менеджер проверяет или обновляет карточки блюд. Результаты предыдущих тестов сохранены.</p>'+
-    btn('К каталогу','nav','catalog','secondary')+'</section>';
+   '<section class="card"><h1>Уроки временно недоступны</h1>'+
+   '<p>Менеджер проверяет материалы. История предыдущих тестов сохранена.</p>'+
+   btn('К библиотеке','nav','catalog','secondary')+'</section>';
   return;
  }
  chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
- const p=c.chapters[chapterIndex],finished=c.chapters.every(p=>c.read.includes(p.id));
- const read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ const p=c.chapters[chapterIndex],read=c.chapters.filter(p=>c.read.includes(p.id)).length;
+ const last=chapterIndex===c.chapters.length-1,passed=c.history.some(t=>t.passed);
+ const nextLabel=last?(c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
  $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
- '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
- '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Учебный материал')+'</span>'+
- '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
- '<div class="actions chapter-actions">'+
- (chapterIndex?btn('← Предыдущая','chapter-prev','','secondary'):'')+
- btn(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →','chapter-next','', 'lime-action')+'</div>'+
- (p.kind==='dish'?'':'<p class="muted">Источник: '+esc(c.source)+'</p>')+
- (finished&&c.questions.length?'<div class="card"><h2>Готов к проверке знаний?</h2>'+
- '<p>Ты изучил все главы. Теперь закрепи материал тестом.</p>'+
- btn('Пройти тест →','study-quiz')+'</div>':'')+
- '<section class="card"><h2>Мои результаты</h2>'+
- (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
- ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):
- '<p class="muted">Тест ещё не пройден.</p>')+'</section>'+ (c.history.length&&c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):'')+
- (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'');
+  '<div class="lesson-stage"><span class="stage-active">1 · Изучение</span><span>2 · Тест</span><span>3 · Практика</span></div>'+
+  '<div class="row lesson-progress"><strong>Глава '+(chapterIndex+1)+' / '+c.chapters.length+'</strong><span>'+read+' прочитано</span></div>'+
+  '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
+  '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Урок')+'</span>'+
+  '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
+  '<div class="actions chapter-actions">'+(chapterIndex?btn('← Назад','chapter-prev','','secondary'):'')+
+  btn(nextLabel,'chapter-next','','lime-action')+'</div>'+
+  (last?'<details class="card lesson-extra"><summary>История обучения и тесты</summary>'+
+   (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
+    ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):'<p>Тест ещё не пройден.</p>')+
+   (c.questions.length?btn('Пройти тест заново','study-quiz','','secondary'):'')+
+   (isManager()?btn('Результаты команды','study-results',c.id,'secondary'):'')+'</details>':'');
  if(p.kind==='dish')showDishPhotos();
  window.scrollTo(0,0);
 }
@@ -199,13 +207,22 @@ function showStudyQuiz(){
 }
 function showStudyResult(r){
  activeCourse.history.unshift({score:r.score,passed:r.passed,created_at:new Date().toISOString()});
- $('#app').innerHTML=studyHeader('Результат сохранён')+`<section class="card result-card"><p class="eyebrow">${r.passed?'Тест сдан':'Повтори материал'}</p><h1>${r.score}%</h1><p>Порог: ${activeCourse.pass_score}%. Это учебная проверка; очную аттестацию проводит руководитель.</p>${btn('Вернуться к обучению','study',activeCourse.id)}</section>${activeCourse.chapters.some(x=>x.kind==='dish')?'<section class="card"><h2>Следующий этап — практика</h2><p>Презентуй блюдо гостю голосом или текстом. ИИ оценит содержание и подскажет, что улучшить.</p>'+btn('Практика с ИИ →','study-practice','','lime-action')+'</section>':''}<h2>Разбор ответов</h2>${r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')}${btn('К курсам','nav','catalog','secondary')}`;
+ $('#app').innerHTML=studyHeader('Результат сохранён')+
+  '<section class="card result-card"><p class="eyebrow">'+(r.passed?'Тест сдан':'Есть что повторить')+'</p>'+
+  '<h1>'+r.score+'%</h1><p>Проходной балл: '+activeCourse.pass_score+'%. Очный допуск подтверждает руководитель.</p>'+
+  (activeCourse.chapters.some(x=>x.kind==='dish')?
+   btn('Практика с ИИ →','study-practice','','lime-action'):
+   btn('Вернуться к моему пути','nav','home','lime-action'))+
+  (!r.passed?btn('Повторить главы','chapter-review','','secondary'):'')+'</section>'+
+  '<details class="card lesson-extra"><summary>Разбор '+r.review.length+' ответов</summary>'+
+  r.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>'+
+  btn('К моему пути','nav','home','secondary');
  window.scrollTo(0,0);
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
+ if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','chapter-review','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='course-text-editor')await editTextChapters(Number(id));
@@ -251,11 +268,12 @@ document.addEventListener('click',async e=>{
   if(action==='direction'){view='catalog';await render();filterCourses(id)}
   if(action==='filter')filterCourses(id);
   if(action==='chapter-prev'){chapterIndex--;showChapter()}
+   if(action==='chapter-review'){chapterIndex=0;showChapter()}
   if(action==='chapter-next'){
    const r=await api('learning/'+activeCourse.id+'/read','POST',{chapter_id:activeCourse.chapters[chapterIndex].id});activeCourse.read=r.read;
    if(chapterIndex<activeCourse.chapters.length-1){chapterIndex++;showChapter()}
-   else if(activeCourse.questions.length){quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
-   else showChapter();
+   else if(activeCourse.history.some(t=>t.passed)||!activeCourse.questions.length)showStudyComplete();
+   else {quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
   }
   if(action==='study-quiz'){quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
   if(action==='quiz-prev'){const f=new FormData($('#study-quiz'));if(f.has('answer'))quizAnswers[quizIndex]=readAnswer(activeCourse.questions[quizIndex],f,'answer');quizIndex--;showStudyQuiz()}
