@@ -58,7 +58,7 @@ async function main() {
   assert.match(mainCode, /coursePdfPanel\(\)/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
   assert.match(html, /learning\.js\?v=20261023-events1/);
-  assert.match(html, /pilot\.js\?v=20261023-events1/);
+  assert.match(html, /pilot\.js\?v=20261023-outcome1/);
   assert.match(html, /learning\.css\?v=20261023-events1/);
   assert.match(html, /events\.js\?v=20261023-events1/);
   const calls=[];
