@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
+from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
 from dishes import attach as attach_dishes
 from voice import make_voice_router
 from events import make_events_router
@@ -65,7 +66,7 @@ def course_data(d):
     kind=d.get('kind','service')
     if kind not in ('service','ttk','notice'): raise HTTPException(422,'Неизвестный тип')
     qs=d.get('questions',[])
-    if not isinstance(qs,list) or len(qs)>100 or (kind!='notice' and not qs): raise HTTPException(422,'Добавьте от 1 до 100 вопросов')
+    if not isinstance(qs,list) or len(qs)>100: raise HTTPException(422,'Допустимо до 100 вопросов в черновике')
     clean=[]
     for q in qs:
         if not isinstance(q,dict): raise HTTPException(422,'Некорректный вопрос')
@@ -73,6 +74,14 @@ def course_data(d):
     score=d.get('pass_score',80)
     if type(score)!=int or not 1<=score<=100: raise HTTPException(422,'Порог от 1 до 100')
     return title,kind,body,source,clean,score
+
+def ensure_dish_quiz_current(c, course_id, restaurant, signature):
+    """Never assign or grade questions against a changed reviewed recipe."""
+    if signature is not None:
+        chapters=dish_chapters(c,course_id,restaurant)
+        if reviewed_dish_signature(chapters or [])!=signature:
+            raise HTTPException(409,'Рецептура изменилась после утверждения теста. Менеджер должен создать новую версию курса.')
+
 
 def grade(qs, answers):
     return grade_questions(qs, answers)
@@ -180,6 +189,8 @@ def courses(request:Request):
         rows=c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY archived ASC,id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
         for row in rows:
             row['quality_issues']=quality_issues(row['questions'])
+            row['recipe_changed']=bool(row['reviewed_dish_signature'] and
+                 reviewed_dish_signature(dish_chapters(c,row['id'],row['restaurant']) or []) != row['reviewed_dish_signature'])
         return rows
 
 @app.post('/api/courses')
@@ -242,7 +253,20 @@ async def publish(cid:int,request:Request):
         if row['archived']: raise HTTPException(409,'Нельзя опубликовать архивную версию. Создайте копию.')
         if row['kind'] != 'notice' and not row['questions']:
             raise HTTPException(409,'Сначала добавь и проверь вопросы теста. Для курса только на чтение выбери тип «Ознакомление».')
-        c.execute('UPDATE courses SET published=true WHERE id=%s',(cid,));audit(c,u['id'],'course:approved',cid)
+        dish_ids=map_details(c,cid)
+        signature=row['reviewed_dish_signature']
+        if dish_ids and not row['published']:
+            chapters=dish_chapters(c,cid,row['restaurant'])
+            if len(chapters)!=len(dish_ids):
+                raise HTTPException(409,'Карточки изменились или сняты с публикации. Проверь курс перед выпуском.')
+            current=reviewed_dish_signature(chapters)
+            if signature and signature!=current:
+                raise HTTPException(409,'Рецептуры изменились после создания тестов. Подготовь новую версию вопросов.')
+            signature=current
+        elif signature and not dish_ids:
+            raise HTTPException(409,'Утверждённые карточки были удалены из курса. Проверь содержание.')
+        c.execute('UPDATE courses SET published=true,reviewed_dish_signature=%s WHERE id=%s',(signature,cid))
+        audit(c,u['id'],'course:approved',cid)
     return {'ok':True}
 
 @app.post('/api/courses/{cid}/archive')
@@ -272,7 +296,9 @@ async def assign(request:Request):
         u=require(c,request);manager(u)
         course=c.execute('SELECT * FROM courses WHERE id=%s AND published AND NOT archived',(d.get('course_id'),)).fetchone()
         if not course: raise HTTPException(422,'Сначала опубликуйте курс')
-        scope(u,course['restaurant']);result=[]
+        scope(u,course['restaurant'])
+        ensure_dish_quiz_current(c,course['id'],course['restaurant'],course['reviewed_dish_signature'])
+        result=[]
         for sid in set(ids):
             person=c.execute('SELECT * FROM staff WHERE id=%s AND active',(sid,)).fetchone()
             if not person: raise HTTPException(422,'Сотрудник не найден')
@@ -301,9 +327,10 @@ def assignments(request:Request):
 def assignment(aid:int,request:Request):
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score,c.archived,c.restaurant,c.reviewed_dish_signature FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
         if row['archived']: raise HTTPException(410,'Это задание архивировано руководителем')
+        ensure_dish_quiz_current(c,row['course_id'],row['restaurant'],row['reviewed_dish_signature'])
         questions=row['questions']
         row['history']=c.execute('SELECT id,score,passed,created_at FROM attempts WHERE assignment_id=%s ORDER BY id',(aid,)).fetchall()
         row['finished']=any(t['passed'] for t in row['history']) or len(row['history'])>=row['max_attempts']
@@ -328,11 +355,12 @@ async def submit(aid:int,request:Request):
     except (KeyError,ValueError,TypeError): raise HTTPException(422,'Некорректный идентификатор попытки')
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.questions,c.pass_score,c.archived,c.restaurant,c.reviewed_dish_signature FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
         if row['archived']:raise HTTPException(410,'Этот тест архивирован руководителем')
         old=c.execute('SELECT id,score,passed FROM attempts WHERE assignment_id=%s AND request_id=%s',(aid,rid)).fetchone()
         if old:return old
+        ensure_dish_quiz_current(c,row['course_id'],row['restaurant'],row['reviewed_dish_signature'])
         if c.execute('SELECT 1 FROM attempts WHERE assignment_id=%s AND passed LIMIT 1',(aid,)).fetchone():raise HTTPException(409,'Тест уже сдан')
         if not row['acknowledged_at']:raise HTTPException(409,'Сначала ознакомьтесь с материалом')
         if not row['questions']:raise HTTPException(422,'У этого материала нет теста')

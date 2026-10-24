@@ -1,4 +1,4 @@
-"""Manager-reviewed AI suggestions from MOJO PDF chapters; never auto-publish."""
+"""Manager-reviewed AI suggestions from approved MOJO PDF or dish chapters; never auto-publish."""
 import json
 import os
 import httpx
@@ -6,6 +6,23 @@ from fastapi import HTTPException
 from cases_api import AI_URL, PRIVATE_DATA, case_payload
 from questions import clean_question
 from question_quality import quality_issues
+
+def dish_review_chapters(parts):
+    """Use only published recipe-card facts as the AI source; never invent recipes."""
+    if not 1 <= len(parts) <= 16:
+        raise HTTPException(422, "Для ИИ создай курс из 1–16 утверждённых карточек блюд")
+    result=[]
+    for part in parts:
+        if part.get("kind") != "dish" or not part.get("ingredients") or not part.get("description"):
+            raise HTTPException(409, "Сначала проверь составы и описания всех карточек")
+        source=part["source"]+(f", стр. {part['source_page']}" if part.get("source_page") else "")
+        body=("Раздел меню: "+part["section"]+"\\n"+"Подтверждённый состав: "+
+              ", ".join(part["ingredients"])+"\\n"+"Описание и подача: "+part["description"])
+        if len(body)>1250:
+            raise HTTPException(422, "Слишком длинная карточка «"+part["title"]+"» для проверяемого теста. Сократи описание.")
+        result.append({"title":part["title"],"body":body,"source":source})
+    return result
+
 
 def excerpt_chapters(chapters):
     """Bound cost and cover the complete set, not silently omit later chapters."""
@@ -109,6 +126,10 @@ def generate_review_drafts(chapters):
         "использованной главы из входных данных. "
         "Кейсы проверяют наблюдаемые действия и умение решать ситуацию с гостем; "
         "у каждого 2-5 конкретных критериев без подсказок в тексте сценария. "
+        "Если в главах описаны блюда, варианты и правильные ответы должны " 
+        "строго соответствовать утверждённым составам и описаниям. " 
+        "Сложные вопросы проверяют состав, осмысленную презентацию и действия " 
+        "официанта, а не дословное угадывание. " 
         "Не додумывай рецептуры, аллергены, гарантии пищевой безопасности, "
         "числа и стандарты, которых нет в тексте. Если факт неизвестен, "
         "требуй уточнить у ответственного. "

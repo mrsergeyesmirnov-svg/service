@@ -311,17 +311,17 @@ function filterCourses(id){$('#course-list').innerHTML=learningCourses.filter(c=
 
 // Managers curate the chapter sequence from reviewed dish cards.
 // This does not change a course's questions or previous exam attempts.
-let courseMapId=null,courseMapTitle='',courseMapSource='',courseMapSelected=[],courseMapAvailable=[],courseMapSearch='';
+let courseMapId=null,courseMapTitle='',courseMapSource='',courseMapSelected=[],courseMapOriginal=[],courseMapHasQuestions=false,courseMapPublished=false,courseMapAvailable=[],courseMapSearch='';
 async function editCourseDishMap(id){
  if(!isManager())throw Error('Доступ только менеджеру');
  const [mapping,cards]=await Promise.all([api('learning/'+id+'/dish-map'),api('dishes')]);
  courseMapId=id;courseMapTitle=mapping.title;courseMapSource=mapping.source||'';
- courseMapSelected=[...mapping.dish_ids];courseMapAvailable=cards.filter(c=>c.published);
+ courseMapSelected=[...mapping.dish_ids];courseMapOriginal=[...mapping.dish_ids];courseMapHasQuestions=mapping.questions_count>0;courseMapPublished=mapping.published;courseMapAvailable=cards.filter(c=>c.published);
  courseMapSearch='';
  $('#app').innerHTML=btn('← Материалы','nav','courses','secondary')+
  '<h1>Главы курса</h1><p class="muted">'+esc(courseMapTitle)+'</p>'+
- '<div class="card"><p>Выбери опубликованные карточки блюд и установи порядок. Сотрудник будет читать их вместо сырого текста станционок, после чего сможет пройти существующий тест.</p>'+ 
- '<p class="muted">При изменении рецептуры карточка снова станет черновиком и исчезнет из учебного курса до повторной проверки.</p></div>'+
+ '<div class="card"><p>Выбери утверждённые карточки и установи порядок. После сохранения ИИ предложит проверяемые вопросы и открытые кейсы; менеджер сможет исправить их перед публикацией.</p>'+ 
+ '<p class="muted">Для одного пакета ИИ — до 16 карточек. При изменении рецептуры потребуется заново проверить вопросы и опубликовать новую версию курса.</p></div>'+
  '<div id="course-map-suggest"></div><h2>Порядок глав</h2><div id="course-map-picked"></div>'+ 
  '<h2>Добавить из каталога</h2><label>Поиск по названию и разделу'+
  '<input type="search" id="course-map-search" placeholder="Например: роллы, песто, салат"></label>'+
@@ -362,8 +362,21 @@ function renderCourseMap(){
 async function saveCourseDishMap(){
  if(courseMapId===null)return;
  if(!courseMapSelected.length&&!confirm('Удалить все привязки? Тогда снова будет показан исходный текст курса.'))return;
- const r=await api('learning/'+courseMapId+'/dish-map','PUT',{dish_ids:courseMapSelected});
+ const changed=JSON.stringify(courseMapOriginal)!==JSON.stringify(courseMapSelected);
+ const clear=changed&&courseMapHasQuestions&&!courseMapPublished;
+ if(clear&&!confirm('Состав курса изменён. Сбросить черновик теста и заново получить предложения ИИ? История попыток не удаляется.'))return;
+ const cid=courseMapId;
+ const r=await api('learning/'+cid+'/dish-map','PUT',{dish_ids:courseMapSelected,reset_quiz:clear});
  courseMapId=null;
+ if(r.generation_ready&&r.dish_ids.length<=16){await generateCourseProposal(cid);return}
+ if(r.generation_ready){
+  $('#app').innerHTML='<h1>Главы курса сохранены</h1><section class="card">'+
+   '<h2>Слишком много карточек для одной генерации</h2>'+
+   '<p>Разбей материал на курсы до 16 карточек, чтобы ИИ проверил каждый источник, а не пропустил часть меню.</p>'+
+   btn('Изменить главы','course-map',cid,'lime-action')+
+   btn('К программам','nav','courses','secondary')+'</section>';
+  return;
+ }
  view='courses';await render();
 }
 

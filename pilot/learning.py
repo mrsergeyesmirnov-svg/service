@@ -4,11 +4,11 @@ import os
 import re
 import uuid
 from questions import public_question, check
-from dish_lessons import dish_chapters, map_details, save_mapping
+from dish_lessons import dish_chapters, map_details, save_mapping, reviewed_dish_signature
 from course_pdf import course_chapters_from_pdf, MAX_PDF_BYTES
 from dishes import limited_body
 from quiz_cards import approved_card_questions
-from course_ai import generate_review_drafts
+from course_ai import generate_review_drafts, dish_review_chapters
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from cases_api import evaluate_with_yandex, PRIVATE_DATA
@@ -82,7 +82,11 @@ def make_learning_router(db, require, manager, scope, grade, audit):
 
     def course_chapters(c, r):
         mapped = dish_chapters(c, r['id'], r['restaurant'])
-        if mapped is not None: return mapped
+        if mapped is not None:
+            # A published, manager-reviewed quiz must never follow a changed recipe.
+            if r['reviewed_dish_signature'] and reviewed_dish_signature(mapped)!=r['reviewed_dish_signature']:
+                return []
+            return mapped
         outline=c.execute('SELECT chapters FROM course_text_outline WHERE course_id=%s',
                           (r['id'],)).fetchone()
         if outline: return text_outline_chapters(outline['chapters'])
@@ -90,9 +94,11 @@ def make_learning_router(db, require, manager, scope, grade, audit):
 
     def course_questions(c, r, parts=None):
         parts = parts if parts is not None else course_chapters(c, r)
+        if r['reviewed_dish_signature']:
+            # Stored, manager-approved questions from the exact approved card versions.
+            return r['questions'] if parts else []
         if parts and parts[0].get('kind') == 'dish':
-            # Curated menu lessons use verified ingredients, never the legacy
-            # "which component is explicitly listed" multiple choice bank.
+            # Backward compatibility for already-published legacy mapped courses.
             return approved_card_questions(parts, r['id'])
         return r['questions']
 
@@ -154,10 +160,19 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             scope(u,row['restaurant'])
             if row['published'] or row['archived'] or row['questions']:
                 raise HTTPException(409, "Предложения доступны только для нового черновика без теста")
-            outline=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
-            if not outline or not outline['chapters']:
-                raise HTTPException(409, "Сначала загрузи PDF или подготовь учебные главы")
-            chapters=outline['chapters']
+            dish_ids=map_details(c,cid)
+            if dish_ids:
+                parts=dish_chapters(c,cid,row['restaurant'])
+                if len(parts)!=len(dish_ids):
+                    raise HTTPException(409, "Сначала снова утверди все карточки блюд")
+                chapters=dish_review_chapters(parts)
+                source_signature=reviewed_dish_signature(parts)
+            else:
+                outline=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
+                if not outline or not outline['chapters']:
+                    raise HTTPException(409, "Сначала загрузи PDF или собери курс из опубликованных карточек")
+                chapters=outline['chapters']
+                source_signature=None
         # Never hold a DB connection/transaction while waiting for a paid AI call.
         questions,cases=await run_in_threadpool(generate_review_drafts,chapters)
         with db() as c:
@@ -168,10 +183,17 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             scope(u,row['restaurant'])
             if row['published'] or row['archived'] or row['questions']:
                 raise HTTPException(409, "Курс уже изменён другим менеджером. Проверь черновик")
-            current=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
-            if not current or current['chapters']!=chapters:
-                raise HTTPException(409, "Главы изменились во время генерации. Повтори после проверки")
-            c.execute("UPDATE courses SET questions=%s WHERE id=%s",(Jsonb(questions),cid))
+            if source_signature:
+                current_ids=map_details(c,cid)
+                parts=dish_chapters(c,cid,row['restaurant'])
+                if current_ids!=dish_ids or len(parts)!=len(dish_ids) or reviewed_dish_signature(parts)!=source_signature:
+                    raise HTTPException(409, "Карточки блюд изменились во время генерации. Проверь главы и повтори")
+            else:
+                current=c.execute("SELECT chapters FROM course_text_outline WHERE course_id=%s",(cid,)).fetchone()
+                if not current or current['chapters']!=chapters or map_details(c,cid):
+                    raise HTTPException(409, "Главы изменились во время генерации. Повтори после проверки")
+            c.execute("UPDATE courses SET questions=%s,reviewed_dish_signature=%s WHERE id=%s",
+                      (Jsonb(questions),source_signature,cid))
             created=[]
             for item in cases:
                 duplicate=c.execute("""SELECT id FROM case_scenarios
@@ -298,7 +320,9 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             r=c.execute('SELECT * FROM courses WHERE id=%s',(cid,)).fetchone()
             if not r:raise HTTPException(404,'Курс не найден')
             scope(u,r['restaurant'])
-            return {'course_id':cid,'title':r['title'],'source':r['source'],'dish_ids':map_details(c,cid)}
+            return {'course_id':cid,'title':r['title'],'source':r['source'],
+                    'dish_ids':map_details(c,cid),'questions_count':len(r['questions']),
+                    'published':r['published']}
 
     @router.put('/{cid}/dish-map')
     async def put_dish_map(cid:int,request:Request):
@@ -311,9 +335,20 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             scope(u,r['restaurant'])
             if d.get('dish_ids') and c.execute('SELECT 1 FROM course_text_outline WHERE course_id=%s',(cid,)).fetchone():
                 raise HTTPException(409,'Сначала убери текстовые главы этого курса')
-            save_mapping(c,r,d.get('dish_ids'))
+            requested=d.get('dish_ids')
+            existing=map_details(c,cid)
+            if requested!=existing:
+                if r['published'] and r['reviewed_dish_signature']:
+                    raise HTTPException(409,'Опубликованный курс с проверенным тестом неизменен. Создай новую версию.')
+                if not r['published'] and r['questions']:
+                    if d.get('reset_quiz') is not True:
+                        raise HTTPException(409,'Для изменения карточек подтверди сброс черновика теста')
+                    c.execute("UPDATE courses SET questions='[]'::jsonb,reviewed_dish_signature=NULL WHERE id=%s",(cid,))
+            save_mapping(c,r,requested)
             audit(c,u['id'],'learning:dish-map',cid)
-            return {'ok':True,'dish_ids':map_details(c,cid)}
+            return {'ok':True,'dish_ids':map_details(c,cid),
+                    'generation_ready':bool(requested and not r['published'] and
+                        (not r['questions'] or requested!=existing))}
 
 
     @router.post('/{cid}/dish-practice')

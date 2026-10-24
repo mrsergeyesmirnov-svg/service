@@ -6,6 +6,7 @@ This is an automated gate, NOT a substitute for restoring a backup or an iPhone 
 import os
 
 from question_quality import quality_issues
+from dish_lessons import dish_chapters, reviewed_dish_signature
 from server import db
 
 
@@ -16,6 +17,7 @@ def evaluate(s):
         ("WOW опубликован", s["wow"] >= 1),
         ("SMILE опубликован", s["smile"] >= 1),
         ("Есть курс меню из утверждённых карточек", s["mapped_menu"] >= 1),
+        ("Нет устаревших утверждённых тестов по изменённым блюдам", s.get("stale_reviewed", 0) == 0),
         ("Есть минимум 3 опубликованных кейса", s["cases"] >= 3),
         ("В опубликованных тестах нет очевидных предупреждений", s["weak_quizzes"] == 0),
         ("Yandex AI Studio настроен", bool(s["ai_configured"])),
@@ -26,7 +28,7 @@ def evaluate(s):
 def counts():
     with db() as c:
         courses = c.execute(
-            "SELECT id,title,kind,questions FROM courses "
+            "SELECT id,title,kind,questions,restaurant,reviewed_dish_signature FROM courses "
             "WHERE published AND NOT archived"
         ).fetchall()
         mapped = {
@@ -35,6 +37,9 @@ def counts():
             ).fetchall()
         }
         qcount = sum(bool(quality_issues(course["questions"])) for course in courses)
+        stale_reviewed=sum(1 for course in courses if course["reviewed_dish_signature"] and
+                           reviewed_dish_signature(dish_chapters(c,course["id"],course["restaurant"]) or []) !=
+                           course["reviewed_dish_signature"])
         people = c.execute(
             "SELECT role,active,count(*) AS n FROM staff GROUP BY role,active"
         ).fetchall()
@@ -62,6 +67,7 @@ def counts():
         "cases": cases,
         "cards": cards,
         "weak_quizzes": qcount,
+        "stale_reviewed": stale_reviewed,
         "outbox_failed": queue,
     }
 
@@ -78,7 +84,8 @@ if __name__ == "__main__":
     print(f"Курсов: {snapshot['courses']} · карточек: {snapshot['cards']} · "
           f"кейсов: {snapshot['cases']} · активных аккаунтов: {snapshot['active_staff']}")
     print(f"Заявок на подтверждение: {snapshot['pending']} · "
-          f"ошибок уведомлений: {snapshot['outbox_failed']}")
+          f"ошибок уведомлений: {snapshot['outbox_failed']} · "
+          f"устаревших тестов по карточкам: {snapshot['stale_reviewed']}")
     for name, good in checks:
         print(("OK   " if good else "BLOCK") + " " + name)
     print("ОТДЕЛЬНО ПРОВЕРИТЬ ВРУЧНУЮ: живой ответ ИИ, HTTPS/права доступа, "
