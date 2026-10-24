@@ -16,7 +16,7 @@ def dish_chapters(c,course_id,restaurant):
     ).fetchone()
     if not mapped:
         return None
-    rows = c.execute("""SELECT d.id,d.title,d.section,d.ingredients,d.description,
+    rows = c.execute("""SELECT d.id,d.title,d.section,d.ingredients,d.description,d.allergens,
               d.source_name,d.source_page,d.photo IS NOT NULL AS has_photo,d.updated_at
               FROM course_dishes m JOIN dish_cards d ON d.id=m.dish_id
               WHERE m.course_id=%s AND d.restaurant=%s AND d.published AND NOT d.archived
@@ -34,6 +34,7 @@ def dish_chapters(c,course_id,restaurant):
             "section":item["section"],
             "ingredients":item["ingredients"],
             "description":item["description"],
+            "allergens":item["allergens"],
             "source":item["source_name"],
             "source_page":item["source_page"],
             "has_photo":item["has_photo"]

@@ -33,33 +33,54 @@ async function dishesPage(){
  dishCards=await api("dishes");
  root.innerHTML='<div class="lesson-top">'+btn("← Курсы","nav","catalog","secondary")+
  '<div><h1>Карточки блюд</h1><small>MOJO · каталог, состав и особенности подачи</small></div></div>'+
- (dishAdmin()?'<section class="card dish-import"><h2>Загрузка PDF станционок</h2>'+
- '<p>Фото, составы и описания появятся как <b>черновики</b>. Перед публикацией каждую позицию нужно проверить.</p>'+
- '<form id="dish-import-form"><input type="file" name="pdf" accept="application/pdf,.pdf" required>'+
- '<button type="submit">Загрузить PDF</button></form><p id="dish-import-status" role="status"></p>'+
+ (dishAdmin()?'<section class="card dish-import"><h2>Загрузка ТТК и станционок</h2>'+
+ '<p>Скачай шаблон и заполни подписанные поля. Один слайд — одно блюдо. Фотография должна быть настоящей картинкой в PowerPoint, а не текстом внутри скриншота.</p>'+
+ btn("Скачать шаблон ТТК (.pptx)","dish-template","","lime-action")+
+ '<form id="dish-import-form"><label>Файл PowerPoint или PDF<input name="material" type="file" accept=".pptx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" required></label>'+
+ '<label>Способ загрузки<select name="mode"><option value="template">Шаблон ТТК / обычный импорт</option><option value="assist">Привести старую презентацию к шаблону с ИИ</option></select></label>'+
+ '<button type="submit">Создать черновики карточек</button></form>'+
+ '<p class="muted">ИИ работает с текстом PPTX, фотографии извлекаются напрямую. Аллергены обязательно проверяются менеджером по оригинальной ТТК.</p>'+
+ '<p id="dish-import-status" role="status"></p>'+
  btn("Добавить блюдо вручную","dish-create","","secondary")+'</section>':"")+
  '<label>Поиск по названию и ингредиентам<input type="search" id="dish-search" value="'+esc(dishFilter)+'" placeholder="Например: песто, лосось, рамен"></label>'+
  '<div id="dish-list">'+dishListMarkup()+'</div>';
  $("#dish-search").oninput=e=>{dishFilter=e.target.value;dishPageIndex=0;paintDishList()};
- if(dishAdmin())$("#dish-import-form").onsubmit=importDishPdf;
+ if(dishAdmin())$("#dish-import-form").onsubmit=importDishMaterial;
  await showDishPhotos();
 }
 function paintDishList(){$("#dish-list").innerHTML=dishListMarkup();showDishPhotos()}
-async function importDishPdf(e){
+async function downloadDishTemplate(){
+ const r=await fetch("/api/dishes/template",{headers:{Authorization:"Bearer "+token}});
+ if(!r.ok)throw Error("Не удалось получить шаблон ТТК");
+ const link=URL.createObjectURL(await r.blob()),node=document.createElement("a");
+ node.href=link;node.download="MOJO_TTK_template.pptx";
+ document.body.appendChild(node);node.click();node.remove();
+ setTimeout(()=>URL.revokeObjectURL(link),30000);
+}
+async function importDishMaterial(e){
  e.preventDefault();
- const file=e.target.querySelector('input[name="pdf"]')?.files?.[0];if(!file)return;
- if(file.size>20_000_000){error(Error("PDF больше 20 МБ"));return}
- if(!confirm('Импортировать «'+file.name+'» как неопубликованные черновики?'))return;
- const b=e.target.querySelector("button"),status=$("#dish-import-status");
- b.disabled=true;status.textContent="Извлекаем названия, фотографии и ингредиенты…";
- const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),160000);
+ const file=e.target.querySelector('input[name="material"]')?.files?.[0];if(!file)return;
+ const mode=e.target.querySelector('select[name="mode"]').value;
+ if(file.size>20_000_000){error(Error("Файл больше 20 МБ"));return}
+ if(!/\.(pdf|pptx)$/i.test(file.name)){error(Error("Нужен PPTX или PDF"));return}
+ if(mode==='assist'&&!/\.pptx$/i.test(file.name)){error(Error("ИИ разбирает только PPTX"));return}
+ if(!confirm('Создать неопубликованные карточки из «'+file.name+'»?'))return;
+ const button=e.target.querySelector('button[type="submit"]'),status=$("#dish-import-status");
+ button.disabled=true;status.textContent="Извлекаем подписи и изображения, готовим закрытые черновики…";
+ const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),160000);
  try{
-  const r=await fetch("/api/dishes/import",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/pdf"},body:file,signal:controller.signal});
-  const v=await r.json();if(!r.ok)throw Error(v.detail||"Ошибка импорта PDF");
-  status.textContent="Добавлено "+v.created+" черновиков, пропущено повторных: "+v.skipped+".";
+  const query=new URLSearchParams({filename:file.name,mode});
+  const mime=/\.pptx$/i.test(file.name)?"application/vnd.openxmlformats-officedocument.presentationml.presentation":"application/pdf";
+  const r=await fetch("/api/dishes/import?"+query,{method:"POST",
+   headers:{Authorization:"Bearer "+token,"Content-Type":mime},body:file,signal:ctrl.signal});
+  const v=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(v.detail||"Ошибка загрузки");
+  status.textContent="Создано "+v.created+" черновиков, пропущено "+v.skipped+
+   ". Требуют проверки: "+v.warnings+", без фото: "+v.missing_photos+
+   ". Открой каждую карточку перед публикацией.";
   dishCards=await api("dishes");dishPageIndex=0;paintDishList();
- }catch(err){status.textContent="Не удалось завершить импорт. "+(err.name==="AbortError"?"Истекло время ожидания. Проверь черновики перед повтором.":err.message)}
- finally{clearTimeout(timeout);b.disabled=false}
+ }catch(err){status.textContent="Импорт не завершён: "+(err.name==="AbortError"?"Превышено время ожидания":err.message)}
+ finally{clearTimeout(timeout);button.disabled=false}
 }
 async function dishDetail(id){
  const c=dishCards.find(x=>x.id===id);if(!c)return;
@@ -69,6 +90,7 @@ async function dishDetail(id){
  '<h1>'+esc(c.title)+'</h1><h2>Ингредиенты</h2><ul>'+
  (c.ingredients.map(s=>"<li>"+esc(s)+"</li>").join("")||"<li>Не указаны</li>")+
  '</ul><h2>Описание и подача</h2><p class="dish-description">'+esc(c.description||"Описание ещё не подготовлено.")+'</p>'+
+ '<h2>Аллергены и ограничения</h2><p class="dish-description">'+esc(c.allergens||"Не подтверждены по ТТК. Не утверждай, что аллергенов нет.")+'</p>'+
  '<p class="muted">Источник: '+esc(c.source_name||"Ручная карточка")+' · страница '+esc(c.source_page||"—")+'</p>'+
  (dishAdmin()?'<div class="dish-controls"><p class="muted">'+(c.warning?"Проверить: "+esc(c.warning):"Проверь по актуальной ТТК перед публикацией.")+'</p>'+
  btn("Редактировать","dish-edit",id,"secondary")+
@@ -86,6 +108,7 @@ async function dishEditor(id){
  '<label>Раздел меню<input name="section" maxlength="100" required value="'+esc(c.section)+'"></label>'+
  '<label>Ингредиенты (по одному на строку)<textarea name="ingredients" rows="9">'+esc(c.ingredients.join("\n"))+'</textarea></label>'+
  '<label>Описание, особенности, подача<textarea name="description" rows="7" maxlength="4500">'+esc(c.description)+'</textarea></label>'+
+ '<label>Аллергены по проверенной ТТК<textarea name="allergens" rows="3" maxlength="1200">'+esc(c.allergens||"")+'</textarea></label>'+
  '<label>'+(id?"Заменить фото":"Добавить фото")+' (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>'+
  '<p class="muted">После изменения опубликованная карточка станет черновиком до проверки менеджера.</p>'+
  '<button type="submit">Сохранить карточку</button></form>';
@@ -93,7 +116,7 @@ async function dishEditor(id){
   e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;
   const form=new FormData(e.target);
   const data={title:String(form.get("title")),section:String(form.get("section")),
-    description:String(form.get("description")),
+    description:String(form.get("description")),allergens:String(form.get("allergens")),
     ingredients:String(form.get("ingredients")).split("\n").map(x=>x.trim()).filter(Boolean)};
   try{
    const saved=await api("dishes"+(id?"/"+id:""),id?"PUT":"POST",data);
@@ -112,9 +135,10 @@ async function dishEditor(id){
 document.addEventListener("click",async e=>{
  const b=e.target.closest("[data-action]");if(!b)return;
  const {action,id}=b.dataset;
- if(!["dish-open","dish-list","dish-next","dish-prev","dish-detail","dish-edit","dish-create","dish-delete","dish-publish"].includes(action))return;
+ if(!["dish-open","dish-list","dish-template","dish-next","dish-prev","dish-detail","dish-edit","dish-create","dish-delete","dish-publish"].includes(action))return;
  e.preventDefault();b.disabled=true;
  try{
+  if(action==="dish-template")await downloadDishTemplate();
   if(action==="dish-open"){view="dishes";nav();await dishesPage()}
   if(action==="dish-list")await dishesPage();
   if(action==="dish-next"){dishPageIndex++;paintDishList()}
@@ -123,7 +147,7 @@ document.addEventListener("click",async e=>{
   if(action==="dish-edit")await dishEditor(Number(id));
   if(action==="dish-create")await dishEditor(null);
   if(action==="dish-delete"&&confirm("Убрать блюдо из Академии? Данные сохранятся в архиве.")){await api("dishes/"+id,"DELETE");await dishesPage()}
-  if(action==="dish-publish"&&confirm("Вы проверили фотографию, состав и описание по действующей ТТК?")){
+  if(action==="dish-publish"&&confirm("Вы проверили фотографию, состав, описание и аллергены по действующей ТТК?")){
    await api("dishes/"+id+"/publish","POST",{reviewed:true});await dishesPage()
   }
  }catch(err){error(err)}finally{b.disabled=false}

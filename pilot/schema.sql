@@ -102,6 +102,11 @@ CREATE TABLE IF NOT EXISTS dish_cards (
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  UNIQUE(restaurant,source_hash,source_page,source_slot)
 );
+-- Allergen details remain unverified until manager confirms them against the source.
+ALTER TABLE dish_cards ADD COLUMN IF NOT EXISTS allergens TEXT NOT NULL DEFAULT '';
+-- Existing PDF/manual cards remain compatible; new PPTX cards require explicit allergen text.
+ALTER TABLE dish_cards ADD COLUMN IF NOT EXISTS import_method TEXT NOT NULL DEFAULT 'legacy';
+
 CREATE INDEX IF NOT EXISTS dish_cards_visible ON dish_cards(restaurant,published,archived);
 
 

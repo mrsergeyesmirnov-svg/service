@@ -106,6 +106,7 @@ function chapterBody(p){
  (p.ingredients?.length?'<ul class="chapter-ingredients">'+p.ingredients.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':
   '<p class="muted">Ингредиенты проверяются менеджером.</p>')+
  '<h2>Особенности и подача</h2><div class="body lesson-source">'+esc(p.description||'Описание блюда готовится.')+'</div>'+
+ (p.allergens?'<h2>Аллергены и ограничения</h2><p>'+esc(p.allergens)+'</p>':'<p class="muted">Данные об аллергенах уточняются по ТТК; не обещай гостю отсутствие аллергенов.</p>')+
  '<p class="muted">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>'+
  '<p class="muted">После изучения глав сначала пройди тест. Затем можно презентовать блюдо гостю голосом или текстом и получить разбор ИИ.</p>';
 

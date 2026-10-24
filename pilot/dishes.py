@@ -5,6 +5,7 @@ from psycopg.types.json import Jsonb
 from starlette.concurrency import run_in_threadpool
 from PIL import Image
 from dish_extract import extract_pdf
+from pptx_ttk import extract_pptx, template_pptx
 
 MAX_PDF=20_000_000
 
@@ -28,6 +29,9 @@ def validate_card(d):
     if not isinstance(a,list) or len(a)>55 or any(not isinstance(x,str) or not x.strip() or len(x)>180 for x in a):
         raise HTTPException(422,"Проверьте ингредиенты")
     result["ingredients"]=[x.strip() for x in a]
+    allergies=d.get("allergens","")
+    if not isinstance(allergies,str) or len(allergies)>1200: raise HTTPException(422,"Проверь поле аллергены")
+    result["allergens"]=allergies.strip()
     return result
 
 def jpg_thumbnail(data):
@@ -58,11 +62,19 @@ def attach(db,require,manager,scope,audit):
     def all_cards(request:Request):
         with db() as c:
             u=require(c,request)
-            return c.execute("""SELECT id,title,section,ingredients,description,source_page,
+            return c.execute("""SELECT id,title,section,ingredients,description,allergens,source_page,
                 source_name,warning,published,archived,(photo IS NOT NULL) has_photo
                 FROM dish_cards WHERE (%s OR restaurant=%s) AND NOT archived AND (%s OR published)
                 ORDER BY section,title,id""",
                 (u["role"]=="manager",u["restaurant"],u["role"] in ("manager","local"))).fetchall()
+
+    @router.get("/template")
+    def get_template(request:Request):
+        with db() as c:
+            u=require(c,request);manager(u)
+        return Response(template_pptx(),media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition":'attachment; filename="MOJO_TTK_template.pptx"',
+                     "Cache-Control":"private,no-store"})
 
     @router.get("/{cid}/photo")
     def photo(cid:int,request:Request):
@@ -73,45 +85,56 @@ def attach(db,require,manager,scope,audit):
             return Response(bytes(row["photo"]),media_type="image/jpeg",headers={"Cache-Control":"private,no-store"})
 
     @router.post("/import")
-    async def import_pdf(request:Request):
-        # Check permissions before allocating memory for untrusted uploaded bytes.
+    async def import_material(request:Request):
+        # Authorize BEFORE reading uploaded material or spending an AI request.
         with db() as c:
             u=require(c,request);manager(u)
             uid,restaurant=u["id"],u["restaurant"]
-        if not request.headers.get("content-type","").startswith("application/pdf"):
-            raise HTTPException(415,"Выбери PDF со станционками")
-        data=await limited_body(request,MAX_PDF)
+        filename=(request.query_params.get("filename") or "Материал").split("/")[-1].split("\\")[-1][:120]
+        media=request.headers.get("content-type","").split(";")[0].lower()
+        pptx=filename.lower().endswith(".pptx") or media=="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        pdf=media=="application/pdf" or filename.lower().endswith(".pdf")
+        mode=request.query_params.get("mode","template")
+        if mode not in ("template","assist"): raise HTTPException(422,"Неизвестный режим разбора")
+        if not (pptx or pdf):raise HTTPException(415,"Выбери PDF или PowerPoint PPTX")
+        if not pptx and mode=="assist":raise HTTPException(422,"ИИ-преобразование возможно только для PPTX")
+        raw=await limited_body(request,MAX_PDF)
         try:
-            extracted=await run_in_threadpool(extract_pdf,data)
-        except (ValueError,RuntimeError) as exc:
-            raise HTTPException(422,str(exc))
+            extracted=await run_in_threadpool(extract_pptx,raw,mode=="assist") if pptx else await run_in_threadpool(extract_pdf,raw)
+        except (ValueError,RuntimeError) as exc:raise HTTPException(422,str(exc))
+        import_method="pptx" if pptx else "legacy"
+        source=("PPTX: " if pptx else "PDF: ")+filename
         with db() as c:
             u=require(c,request);manager(u)
-            if u["id"]!=uid or u["restaurant"]!=restaurant: raise HTTPException(403)
+            if (u["id"],u["restaurant"])!=(uid,restaurant):raise HTTPException(403)
             created=skipped=0
             for item in extracted:
                 row=c.execute("""INSERT INTO dish_cards
-                  (restaurant,created_by,title,section,ingredients,description,photo,source_name,
-                   source_page,source_slot,source_hash,warning)
-                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                  (restaurant,created_by,title,section,ingredients,description,allergens,photo,source_name,
+                   source_page,source_slot,source_hash,warning,import_method)
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                   ON CONFLICT(restaurant,source_hash,source_page,source_slot) DO NOTHING RETURNING id""",
                   (restaurant,uid,item["title"],item["section"],Jsonb(item["ingredients"]),
-                   item["description"],item["photo"],"Станционки MOJO (PDF)",
-                   item["source_page"],item["source_slot"],item["source_hash"],item["warning"])).fetchone()
-                if row: created+=1
-                else: skipped+=1
-            audit(c,uid,"dishes:pdf-import",f"{created} added; {skipped} duplicates")
-        return {"created":created,"skipped":skipped,"status":"draft"}
+                   item["description"],item.get("allergens",""),item["photo"],
+                   source+(" · "+item["source_version"] if item.get("source_version") else ""),
+                   item["source_page"],item["source_slot"],item["source_hash"],
+                   item["warning"],import_method)).fetchone()
+                if row:created+=1
+                else:skipped+=1
+            audit(c,uid,"dishes:import",f"{created} created, {skipped} duplicated, {import_method}")
+        return {"created":created,"skipped":skipped,"status":"draft","format":import_method,
+                "review_required":True,"warnings":sum(bool(x["warning"]) for x in extracted),
+                "missing_photos":sum(x["photo"] is None for x in extracted)}
 
     @router.post("")
     async def create(request:Request):
         item=validate_card(await request.json())
         with db() as c:
             u=require(c,request);manager(u)
-            row=c.execute("""INSERT INTO dish_cards(restaurant,created_by,title,section,ingredients,description,source_name)
-                 VALUES(%s,%s,%s,%s,%s,%s,'Ручная карточка') RETURNING id""",
+            row=c.execute("""INSERT INTO dish_cards(restaurant,created_by,title,section,ingredients,description,allergens,source_name)
+                 VALUES(%s,%s,%s,%s,%s,%s,%s,'Ручная карточка') RETURNING id""",
                  (u["restaurant"],u["id"],item["title"],item["section"],
-                  Jsonb(item["ingredients"]),item["description"])).fetchone()
+                  Jsonb(item["ingredients"]),item["description"],item["allergens"])).fetchone()
             audit(c,u["id"],"dishes:create",row["id"])
             return row
 
@@ -120,9 +143,9 @@ def attach(db,require,manager,scope,audit):
         item=validate_card(await request.json())
         with db() as c:
             u=require(c,request);manager(u);row=find(c,u,cid);scope(u,row["restaurant"])
-            c.execute("""UPDATE dish_cards SET title=%s,section=%s,ingredients=%s,description=%s,
+            c.execute("""UPDATE dish_cards SET title=%s,section=%s,ingredients=%s,description=%s,allergens=%s,
                 published=false,updated_at=now() WHERE id=%s""",
-                (item["title"],item["section"],Jsonb(item["ingredients"]),item["description"],cid))
+                (item["title"],item["section"],Jsonb(item["ingredients"]),item["description"],item["allergens"],cid))
             audit(c,u["id"],"dishes:edit",cid)
         return {"ok":True,"published":False}
 
@@ -145,6 +168,11 @@ def attach(db,require,manager,scope,audit):
             u=require(c,request);manager(u);row=find(c,u,cid);scope(u,row["restaurant"])
             if not row["ingredients"] or not row["description"] or row["photo"] is None:
                 raise HTTPException(409,"Для публикации нужны состав, описание и фото")
+            unknown=("не подтвержден","неизвест","не указан","нет данных","не установлен","уточня")
+            if row["import_method"]=="pptx" and (
+                not row["allergens"] or
+                any(item in row["allergens"].casefold() for item in unknown)):
+                raise HTTPException(409,"Проверь аллергены по утверждённой ТТК: неизвестно не означает отсутствуют")
             c.execute("UPDATE dish_cards SET published=true,warning=NULL,updated_at=now() WHERE id=%s",(cid,))
             audit(c,u["id"],"dishes:publish",cid)
         return {"ok":True}
