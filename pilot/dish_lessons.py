@@ -4,6 +4,7 @@ Courses and their existing test banks are unchanged. Mapping is separate so
 a manager can curate the order; unpublished/archived dishes never reach staff.
 """
 import hashlib
+import json
 from fastapi import HTTPException
 
 MAX_DISHES_PER_COURSE = 80
@@ -63,3 +64,11 @@ def save_mapping(c,course,ids):
     for i,dish_id in enumerate(ids):
         c.execute("INSERT INTO course_dishes(course_id,dish_id,position) VALUES(%s,%s,%s)",
                   (course["id"],dish_id,i))
+
+
+def reviewed_dish_signature(chapters):
+    """Freeze the approved recipe versions behind a reviewed quiz, not only dish IDs."""
+    payload=[{key:part[key] for key in (
+        'id','dish_id','title','section','ingredients','description','source','source_page')}
+        for part in chapters]
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
