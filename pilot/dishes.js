@@ -37,9 +37,9 @@ async function dishesPage(){
  '<p>Скачай шаблон и заполни подписанные поля. Один слайд — одно блюдо. Фотография должна быть настоящей картинкой в PowerPoint, а не текстом внутри скриншота.</p>'+
  btn("Скачать шаблон ТТК (.pptx)","dish-template","","lime-action")+
  '<form id="dish-import-form"><label>Файл PowerPoint или PDF<input name="material" type="file" accept=".pptx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" required></label>'+
- '<label>Способ загрузки<select name="mode"><option value="template">Шаблон ТТК / обычный импорт</option><option value="assist">Привести старую презентацию к шаблону с ИИ</option></select></label>'+
+ '<label>Способ загрузки<select name="mode"><option value="template">Шаблон ТТК / обычный импорт</option><option value="assist">Привести PDF или PPTX к шаблону с ИИ</option></select></label>'+
  '<button type="submit">Создать черновики карточек</button></form>'+
- '<p class="muted">ИИ работает с текстом PPTX, фотографии извлекаются напрямую. Аллергены обязательно проверяются менеджером по оригинальной ТТК.</p>'+
+ '<p class="muted">ИИ распределяет текст PPTX или PDF по полям. PDF без текстового слоя требует исходный PPTX или ручной ввод. Состав, фото и аллергены менеджер сверяет с ТТК.</p>'+
  '<p id="dish-import-status" role="status"></p>'+
  btn("Добавить блюдо вручную","dish-create","","secondary")+'</section>':"")+
  '<label>Поиск по названию и ингредиентам<input type="search" id="dish-search" value="'+esc(dishFilter)+'" placeholder="Например: песто, лосось, рамен"></label>'+
@@ -63,7 +63,6 @@ async function importDishMaterial(e){
  const mode=e.target.querySelector('select[name="mode"]').value;
  if(file.size>20_000_000){error(Error("Файл больше 20 МБ"));return}
  if(!/\.(pdf|pptx)$/i.test(file.name)){error(Error("Нужен PPTX или PDF"));return}
- if(mode==='assist'&&!/\.pptx$/i.test(file.name)){error(Error("ИИ разбирает только PPTX"));return}
  if(!confirm('Создать неопубликованные карточки из «'+file.name+'»?'))return;
  const button=e.target.querySelector('button[type="submit"]'),status=$("#dish-import-status");
  button.disabled=true;status.textContent="Извлекаем подписи и изображения, готовим закрытые черновики…";

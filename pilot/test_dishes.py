@@ -91,6 +91,33 @@ class DishCards(unittest.TestCase):
         self.assertEqual(mapped[3]["allergens"],"")
         self.assertEqual(client.return_value.__enter__.return_value.post.call_count,1)
 
+    def test_pdf_ai_can_extract_photo_from_left_of_slide(self):
+        from dish_extract import extract_pdf_assisted
+        from unittest.mock import patch
+        doc=fitz.open(); page=doc.new_page(width=960,height=540)
+        pic=io.BytesIO()
+        Image.new("RGB",(400,300)).save(pic,"PNG")
+        page.insert_image(fitz.Rect(20,40,420,340),stream=pic.getvalue())
+        page.insert_text((550,100),"Caprese",fontsize=25)
+        page.insert_text((550,180),"Tomato",fontsize=16)
+        answer={1:{"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                   "description":"","allergens":""}}
+        with patch("pptx_ttk.assist_map",return_value=answer) as mock:
+            result=extract_pdf_assisted(doc.tobytes())
+        self.assertEqual(len(result),1)
+        self.assertTrue(result[0]["photo"])
+        self.assertEqual(result[0]["ingredients"],["Tomato"])
+        self.assertIn("Аллергены не подтверждены",result[0]["warning"])
+        mock.assert_called_once()
+
+    def test_pdf_ai_requires_readable_text_layer(self):
+        from dish_extract import extract_pdf_assisted
+        doc=fitz.open();page=doc.new_page()
+        pic=io.BytesIO();Image.new("RGB",(300,200)).save(pic,"PNG")
+        page.insert_image(page.rect,stream=pic.getvalue())
+        with self.assertRaises(ValueError):
+            extract_pdf_assisted(doc.tobytes())
+
     def test_reject_invalid_pdf(self):
         with self.assertRaises(ValueError):
             extract_pdf(b"not pdf")
@@ -201,6 +228,38 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(saved.status_code,200,saved.text)
         self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
             json={"reviewed":True},headers=self.headers(10)).status_code,200)
+
+    def test_manager_pdf_ai_mode_creates_private_unapproved_card(self):
+        from unittest.mock import patch
+        doc=fitz.open();page=doc.new_page(width=800,height=500)
+        page.insert_text((460,90),"Caprese",fontsize=27)
+        page.insert_text((460,180),"Tomato",fontsize=17)
+        pic=io.BytesIO();Image.new("RGB",(280,200)).save(pic,"PNG")
+        page.insert_image(fitz.Rect(45,110,350,350),stream=pic.getvalue())
+        uri="/api/dishes/import?filename=menu.pdf&mode=assist"
+        headers=self.headers(10)|{"Content-Type":"application/pdf"}
+        self.assertEqual(self.client.post(uri,content=doc.tobytes(),
+            headers=self.headers(11)|{"Content-Type":"application/pdf"}).status_code,403)
+        answer={1:{"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                   "description":"Present on plate","allergens":""}}
+        with patch("pptx_ttk.assist_map",return_value=answer):
+            result=self.client.post(uri,content=doc.tobytes(),headers=headers)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()["format"],"pdf_ai")
+        self.assertEqual(result.json()["created"],1)
+        self.assertEqual(self.client.get("/api/dishes",
+            headers=self.headers(11)).json(),[])
+        dish=self.client.get("/api/dishes",headers=self.headers(10)).json()[0]
+        self.assertEqual(dish["ingredients"],["Tomato"])
+        self.assertFalse(dish["published"])
+        self.assertEqual(self.client.post(f'/api/dishes/{dish["id"]}/publish',
+            headers=self.headers(10),json={"reviewed":True}).status_code,409)
+        edited={"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                "description":"Verified by manager","allergens":"Milk"}
+        self.assertEqual(self.client.put(f'/api/dishes/{dish["id"]}',
+            headers=self.headers(10),json=edited).status_code,200)
+        self.assertEqual(self.client.post(f'/api/dishes/{dish["id"]}/publish',
+            headers=self.headers(10),json={"reviewed":True}).status_code,200)
 
     def test_manager_import_review_photo_and_archive(self):
         data=self.sample_pdf()
