@@ -453,6 +453,7 @@ class Integration(unittest.TestCase):
             headers=trainee,json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,409)
 
     def test_dish_mapping_reset_needs_manager_confirmation(self):
+        from psycopg.types.json import Jsonb
         from io import BytesIO
         from PIL import Image
         m=self.auth(999)
