@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from psycopg.types.json import Jsonb
 from starlette.concurrency import run_in_threadpool
 from PIL import Image
-from dish_extract import extract_pdf
+from dish_extract import extract_pdf, extract_pdf_assisted
 from pptx_ttk import extract_pptx, template_pptx
 
 MAX_PDF=20_000_000
@@ -97,12 +97,13 @@ def attach(db,require,manager,scope,audit):
         mode=request.query_params.get("mode","template")
         if mode not in ("template","assist"): raise HTTPException(422,"Неизвестный режим разбора")
         if not (pptx or pdf):raise HTTPException(415,"Выбери PDF или PowerPoint PPTX")
-        if not pptx and mode=="assist":raise HTTPException(422,"ИИ-преобразование возможно только для PPTX")
+        # PDF and PPTX may both use assisted text mapping. Image-only PDFs need a real source PPTX.
         raw=await limited_body(request,MAX_PDF)
         try:
-            extracted=await run_in_threadpool(extract_pptx,raw,mode=="assist") if pptx else await run_in_threadpool(extract_pdf,raw)
+            extracted=(await run_in_threadpool(extract_pptx,raw,mode=="assist") if pptx else
+                await run_in_threadpool(extract_pdf_assisted if mode=="assist" else extract_pdf,raw))
         except (ValueError,RuntimeError) as exc:raise HTTPException(422,str(exc))
-        import_method="pptx" if pptx else "legacy"
+        import_method="pptx" if pptx else ("pdf_ai" if mode=="assist" else "legacy")
         source=("PPTX: " if pptx else "PDF: ")+filename
         with db() as c:
             u=require(c,request);manager(u)
@@ -169,7 +170,7 @@ def attach(db,require,manager,scope,audit):
             if not row["ingredients"] or not row["description"] or row["photo"] is None:
                 raise HTTPException(409,"Для публикации нужны состав, описание и фото")
             unknown=("не подтвержден","неизвест","не указан","нет данных","не установлен","уточня")
-            if row["import_method"]=="pptx" and (
+            if row["import_method"] in ("pptx","pdf_ai") and (
                 not row["allergens"] or
                 any(item in row["allergens"].casefold() for item in unknown)):
                 raise HTTPException(409,"Проверь аллергены по утверждённой ТТК: неизвестно не означает отсутствуют")
