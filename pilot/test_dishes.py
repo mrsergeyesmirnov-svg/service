@@ -229,6 +229,38 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
             json={"reviewed":True},headers=self.headers(10)).status_code,200)
 
+    def test_manager_pdf_ai_mode_creates_private_unapproved_card(self):
+        from unittest.mock import patch
+        doc=fitz.open();page=doc.new_page(width=800,height=500)
+        page.insert_text((460,90),"Caprese",fontsize=27)
+        page.insert_text((460,180),"Tomato",fontsize=17)
+        pic=io.BytesIO();Image.new("RGB",(280,200)).save(pic,"PNG")
+        page.insert_image(fitz.Rect(45,110,350,350),stream=pic.getvalue())
+        uri="/api/dishes/import?filename=menu.pdf&mode=assist"
+        headers=self.headers(10)|{"Content-Type":"application/pdf"}
+        self.assertEqual(self.client.post(uri,content=doc.tobytes(),
+            headers=self.headers(11)|{"Content-Type":"application/pdf"}).status_code,403)
+        answer={1:{"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                   "description":"Present on plate","allergens":""}}
+        with patch("pptx_ttk.assist_map",return_value=answer):
+            result=self.client.post(uri,content=doc.tobytes(),headers=headers)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()["format"],"pdf_ai")
+        self.assertEqual(result.json()["created"],1)
+        self.assertEqual(self.client.get("/api/dishes",
+            headers=self.headers(11)).json(),[])
+        dish=self.client.get("/api/dishes",headers=self.headers(10)).json()[0]
+        self.assertEqual(dish["ingredients"],["Tomato"])
+        self.assertFalse(dish["published"])
+        self.assertEqual(self.client.post(f'/api/dishes/{dish["id"]}/publish',
+            headers=self.headers(10),json={"reviewed":True}).status_code,409)
+        edited={"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                "description":"Verified by manager","allergens":"Milk"}
+        self.assertEqual(self.client.put(f'/api/dishes/{dish["id"]}',
+            headers=self.headers(10),json=edited).status_code,200)
+        self.assertEqual(self.client.post(f'/api/dishes/{dish["id"]}/publish',
+            headers=self.headers(10),json={"reviewed":True}).status_code,200)
+
     def test_manager_import_review_photo_and_archive(self):
         data=self.sample_pdf()
         h={**self.headers(10),"Content-Type":"application/pdf"}
