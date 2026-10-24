@@ -150,6 +150,7 @@ def extract_pptx(data,assisted=False):
           ingredients=ingredients,
           description=str(f.get("description",""))[:4500],
           allergens=str(f.get("allergens",""))[:1200],
+          source_version=str(f.get("source",""))[:250],
           photo=page["photos"][0][1] if page["photos"] else None,
           source_page=page["page"],source_slot=0,warning="; ".join(warnings),
           source_hash=hashlib.sha256(data).hexdigest()))
