@@ -53,6 +53,7 @@ class DishCards(unittest.TestCase):
         self.assertEqual(item["title"],"Салат с томатами")
         self.assertEqual(item["ingredients"],["Томаты","Сыр"])
         self.assertEqual(item["allergens"],"Молоко")
+        self.assertEqual(item["source_version"],"ТТК версия 2026")
         self.assertTrue(item["photo"])
         self.assertNotIn("Аллергены не подтверждены",item["warning"])
 
@@ -69,6 +70,26 @@ class DishCards(unittest.TestCase):
         self.assertEqual(len(cards),1)
         self.assertEqual(cards[0]["allergens"],"")
         self.assertIn("Аллергены не подтверждены",cards[0]["warning"])
+
+    def test_yandex_maps_only_verified_ingredients_and_allergens(self):
+        import json
+        import os
+        from unittest.mock import patch
+        from pptx_ttk import assist_map
+        material=[{"page":3,"texts":["Салат с томатами: Томаты, Сыр. Аллергены: молоко."]}]
+        suggestion={"cards":[{"page":3,"title":"Салат с томатами",
+            "section":"Салаты","ingredients":["Томаты","Сыр","Арахис"],
+            "description":"Проверь состав","allergens":"молоко и орехи"}]}
+        with patch.dict(os.environ,{"YANDEX_API_KEY":"test-api","YANDEX_FOLDER_ID":"test-folder"}):
+            with patch("pptx_ttk.httpx.Client") as client:
+                response=client.return_value.__enter__.return_value.post.return_value
+                response.json.return_value={"choices":[{"message":{
+                    "content":json.dumps(suggestion)}}]}
+                mapped=assist_map(material)
+        self.assertEqual(mapped[3]["title"],"Салат с томатами")
+        self.assertEqual(mapped[3]["ingredients"],["Томаты","Сыр"])
+        self.assertEqual(mapped[3]["allergens"],"")
+        self.assertEqual(client.return_value.__enter__.return_value.post.call_count,1)
 
     def test_reject_invalid_pdf(self):
         with self.assertRaises(ValueError):
@@ -168,6 +189,7 @@ class DishIntegration(unittest.TestCase):
         self.assertFalse(row["published"])
         self.assertEqual(row["title"],"Тестовое блюдо")
         self.assertEqual(row["ingredients"],["Томаты","Сыр"])
+        self.assertIn("ТТК v1",row["source_name"])
         self.assertFalse(row["allergens"])
         self.assertEqual(self.client.get("/api/dishes/"+str(row["id"])+"/photo",
             headers=self.headers(10)).status_code,200)
