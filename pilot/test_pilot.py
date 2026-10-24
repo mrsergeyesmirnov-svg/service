@@ -350,6 +350,141 @@ class Integration(unittest.TestCase):
             'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
         self.assertEqual(self.client.put(route,json={'chapters':[dict(title='',body='bad')]},headers=m).status_code,422)
 
+    def test_approved_dish_cards_generate_reviewed_quiz_and_freeze_recipe(self):
+        from io import BytesIO
+        from PIL import Image
+        manager=self.auth(999);trainee=self.auth(101);other=self.auth(103)
+        new=self.client.post('/api/courses',headers=manager,json={
+            'title':'Synthetic menu course','kind':'ttk',
+            'body':'Chapters come from reviewed cards','source':'Synthetic source',
+            'questions':[],'pass_score':80
+        })
+        self.assertEqual(new.status_code,200,new.text)
+        cid=new.json()['id']
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',
+            headers=manager,json={'reviewed':True}).status_code,409)
+        created=self.client.post('/api/dishes',headers=manager,json={
+            'title':'Synthetic avocado roll','section':'Rolls',
+            'ingredients':['Rice','Avocado','Sesame'],
+            'description':'Offer with the approved serving description only'
+        })
+        self.assertEqual(created.status_code,200,created.text)
+        did=created.json()['id']
+        jpg=BytesIO()
+        Image.new('RGB',(120,120)).save(jpg,'JPEG')
+        self.assertEqual(self.client.put(f'/api/dishes/{did}/photo',
+            headers=manager,content=jpg.getvalue()).status_code,200)
+        self.assertEqual(self.client.post(f'/api/dishes/{did}/publish',
+            headers=manager,json={'reviewed':True}).status_code,200)
+        map_url=f'/api/learning/{cid}/dish-map'
+        mapping=self.client.put(map_url,headers=manager,json={'dish_ids':[did]})
+        self.assertEqual(mapping.status_code,200,mapping.text)
+        self.assertTrue(mapping.json()['generation_ready'])
+        route=f'/api/learning/{cid}/generate'
+        self.assertEqual(self.client.post(route,headers=trainee).status_code,403)
+        self.assertEqual(self.client.post(route,headers=other).status_code,403)
+        question={'type':'single','question':'Which description respects the approved recipe?',
+            'options':['Rice and avocado','Rice and peanuts','Unknown composition'],
+            'correct':0,'explanation':'Only the reviewed components are supported.',
+            'source':'Synthetic source'}
+        case={'title':'Guest asks about ingredients','competency':'Accuracy',
+            'action':'Explain approved ingredients',
+            'scenario':'A guest asks about the dish. Explain what you would say.',
+            'source':'Synthetic source',
+            'criteria':['Use only approved composition','Do not invent allergens']}
+        def draft(chapters):
+            self.assertEqual(len(chapters),1)
+            self.assertIn('Rice, Avocado, Sesame',chapters[0]['body'])
+            self.assertIn('Synthetic avocado roll',chapters[0]['title'])
+            return [question],[case]
+        with patch('learning.generate_review_drafts',side_effect=draft):
+            proposed=self.client.post(route,headers=manager)
+        self.assertEqual(proposed.status_code,200,proposed.text)
+        self.assertEqual(proposed.json()['review_required'],True)
+        self.assertEqual(proposed.json()['questions'],1)
+        self.assertEqual(proposed.json()['cases'],1)
+        self.assertEqual(self.client.post(route,headers=manager).status_code,409)
+        draft_course=next(x for x in self.client.get('/api/courses',
+            headers=manager).json() if x['id']==cid)
+        self.assertFalse(draft_course['published'])
+        self.assertTrue(draft_course['reviewed_dish_signature'])
+        self.assertEqual(self.client.get(f'/api/learning/{cid}',
+            headers=trainee).status_code,404)
+        self.assertEqual(self.client.get('/api/cases',headers=trainee).json(),[])
+        # Changing a mapped draft must not silently leave stale AI questions.
+        self.assertEqual(self.client.put(map_url,headers=manager,
+            json={'dish_ids':[]}).status_code,409)
+        # Explicit manager edits preserve the recipe snapshot.
+        payload={k:draft_course[k] for k in
+            ('title','kind','body','source','pass_score','questions')}
+        payload['questions'][0]['explanation']='Reviewed against the approved recipe'
+        self.assertEqual(self.client.put(f'/api/courses/{cid}',headers=manager,
+            json=payload).status_code,200)
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',
+            headers=manager,json={'reviewed':False}).status_code,422)
+        approved=self.client.post(f'/api/courses/{cid}/publish',
+            headers=manager,json={'reviewed':True})
+        self.assertEqual(approved.status_code,200,approved.text)
+        published=self.client.get(f'/api/learning/{cid}',headers=trainee).json()
+        self.assertEqual(published['questions'][0]['question'],question['question'])
+        self.assertEqual(len(published['questions']),1) # not legacy ingredients quiz
+        self.assertEqual(self.client.put(map_url,headers=manager,
+            json={'dish_ids':[]}).status_code,409)
+        chapter=published['chapters'][0]
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/read',
+            headers=trainee,json={'chapter_id':chapter['id']}).status_code,200)
+        attempt=self.client.post(f'/api/learning/{cid}/submit',headers=trainee,json={
+            'request_id':str(uuid.uuid4()),'answers':[0]})
+        self.assertEqual(attempt.status_code,200,attempt.text)
+        self.assertEqual(attempt.json()['score'],100)
+        # A recipe edit cannot silently change a manager-approved, live quiz.
+        changed=self.client.put(f'/api/dishes/{did}',headers=manager,json={
+            'title':'Synthetic avocado roll','section':'Rolls',
+            'ingredients':['Rice','Avocado','Sesame','Cucumber'],
+            'description':'Recipe revised after quiz approval'})
+        self.assertEqual(changed.status_code,200,changed.text)
+        self.assertEqual(self.client.post(f'/api/dishes/{did}/publish',
+            headers=manager,json={'reviewed':True}).status_code,200)
+        outdated=self.client.get(f'/api/learning/{cid}',headers=trainee).json()
+        self.assertEqual(outdated['chapters'],[])
+        self.assertEqual(outdated['questions'],[])
+        self.assertEqual(len(outdated['history']),1)
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',
+            headers=trainee,json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,409)
+
+    def test_dish_mapping_reset_needs_manager_confirmation(self):
+        from io import BytesIO
+        from PIL import Image
+        m=self.auth(999)
+        cid=self.client.post('/api/courses',headers=m,json={
+            'title':'Synthetic draft menu','kind':'ttk','body':'Draft',
+            'source':'Synthetic','questions':[],'pass_score':80
+        }).json()['id']
+        ids=[]
+        for name in ['Synthetic one','Synthetic two']:
+            card=self.client.post('/api/dishes',headers=m,json={
+                'title':name,'section':'Rolls','ingredients':['Rice','Salt'],
+                'description':'Approved synthetic description'}).json()['id']
+            photo=BytesIO();Image.new('RGB',(100,100)).save(photo,'JPEG')
+            self.client.put(f'/api/dishes/{card}/photo',headers=m,content=photo.getvalue())
+            self.client.post(f'/api/dishes/{card}/publish',headers=m,json={'reviewed':True})
+            ids.append(card)
+        endpoint=f'/api/learning/{cid}/dish-map'
+        self.assertEqual(self.client.put(endpoint,headers=m,json={'dish_ids':[ids[0]]}).status_code,200)
+        with server.db() as db:
+            db.execute("UPDATE courses SET questions=%s WHERE id=%s",
+                (Jsonb([{'type':'single','question':'Old draft','options':['A','B'],
+                         'correct':0,'explanation':'Synthetic','source':'Synthetic'}]),cid))
+        denied=self.client.put(endpoint,headers=m,json={'dish_ids':ids})
+        self.assertEqual(denied.status_code,409,denied.text)
+        unchanged=self.client.get(endpoint,headers=m).json()
+        self.assertEqual(unchanged['dish_ids'],[ids[0]])
+        self.assertEqual(unchanged['questions_count'],1)
+        changed=self.client.put(endpoint,headers=m,json={'dish_ids':ids,'reset_quiz':True})
+        self.assertEqual(changed.status_code,200,changed.text)
+        self.assertTrue(changed.json()['generation_ready'])
+        self.assertEqual(self.client.get(endpoint,headers=m).json()['questions_count'],0)
+
     def test_curated_dish_lessons_preserve_courses_and_scope(self):
         from PIL import Image
         from io import BytesIO
