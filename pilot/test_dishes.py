@@ -91,6 +91,33 @@ class DishCards(unittest.TestCase):
         self.assertEqual(mapped[3]["allergens"],"")
         self.assertEqual(client.return_value.__enter__.return_value.post.call_count,1)
 
+    def test_pdf_ai_can_extract_photo_from_left_of_slide(self):
+        from dish_extract import extract_pdf_assisted
+        from unittest.mock import patch
+        doc=fitz.open(); page=doc.new_page(width=960,height=540)
+        pic=io.BytesIO()
+        Image.new("RGB",(400,300)).save(pic,"PNG")
+        page.insert_image(fitz.Rect(20,40,420,340),stream=pic.getvalue())
+        page.insert_text((550,100),"Caprese",fontsize=25)
+        page.insert_text((550,180),"Tomato",fontsize=16)
+        answer={1:{"title":"Caprese","section":"Salads","ingredients":["Tomato"],
+                   "description":"","allergens":""}}
+        with patch("pptx_ttk.assist_map",return_value=answer) as mock:
+            result=extract_pdf_assisted(doc.tobytes())
+        self.assertEqual(len(result),1)
+        self.assertTrue(result[0]["photo"])
+        self.assertEqual(result[0]["ingredients"],["Tomato"])
+        self.assertIn("Аллергены не подтверждены",result[0]["warning"])
+        mock.assert_called_once()
+
+    def test_pdf_ai_requires_readable_text_layer(self):
+        from dish_extract import extract_pdf_assisted
+        doc=fitz.open();page=doc.new_page()
+        pic=io.BytesIO();Image.new("RGB",(300,200)).save(pic,"PNG")
+        page.insert_image(page.rect,stream=pic.getvalue())
+        with self.assertRaises(ValueError):
+            extract_pdf_assisted(doc.tobytes())
+
     def test_reject_invalid_pdf(self):
         with self.assertRaises(ValueError):
             extract_pdf(b"not pdf")
