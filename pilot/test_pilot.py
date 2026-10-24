@@ -462,6 +462,9 @@ class Integration(unittest.TestCase):
         self.assertEqual(outdated['chapters'],[])
         self.assertEqual(outdated['questions'],[])
         self.assertEqual(len(outdated['history']),1)
+        manager_course=next(c for c in self.client.get('/api/courses',headers=manager).json()
+                            if c['id']==cid)
+        self.assertTrue(manager_course['recipe_changed'])
         self.assertEqual(self.client.get(f'/api/assignments/{aid}',headers=trainee).status_code,409)
         self.assertEqual(self.client.post(f'/api/assignments/{aid}/submit',
             headers=trainee,json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,409)
