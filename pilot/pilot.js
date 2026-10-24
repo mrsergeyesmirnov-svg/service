@@ -115,15 +115,16 @@ async function programsPage(){
   cache=await api('courses');
   const active=cache.filter(c=>!c.archived),archive=cache.filter(c=>c.archived);
   function entry(c){
-    const primary=c.archived?btn('Создать новую версию','copy',c.id,'secondary'):
+    const primary=c.recipe_changed?btn('Создать новую версию','copy',c.id,'lime-action'):
+      c.archived?btn('Создать новую версию','copy',c.id,'secondary'):
       c.published?btn('Назначить сотрудникам','assign',c.id,'lime-action'):
         btn('Редактировать','edit',c.id,'lime-action')+btn('Проверить и опубликовать','publish',c.id,'secondary');
     const extras=(!c.published&&!c.archived&&!c.questions.length?btn('Предложить тесты и кейсы (ИИ)','ai-generate',c.id,'secondary'):'')+
       btn('Предпросмотр','preview',c.id,'secondary')+
       (!c.archived?btn('Собрать главы из карточек','course-map',c.id,'secondary')+btn('Редактор текстовых глав','course-text-editor',c.id,'secondary'):'')+
       (c.archived?'':c.published?btn('Создать новую версию','copy',c.id,'secondary')+btn('Архивировать курс','archive-course',c.id,'secondary'):btn('Архивировать черновик','archive-course',c.id,'secondary'));
-    return '<details class="card manager-list manager-course"><summary><span><strong>'+esc(c.title)+'</strong><small>'+c.questions.length+' вопросов'+(c.quality_issues?.length?' · ⚠ проверить '+c.quality_issues.length:'')+'</small></span><span class="badge">'+(c.archived?'Архив':c.published?'Опубликовано':'Черновик')+'</span></summary>'+
-      '<div class="manager-course-actions"><div class="actions">'+primary+'</div><details class="manager-more"><summary>Дополнительные действия</summary><div class="actions">'+extras+'</div></details></div></details>';
+    return '<details class="card manager-list manager-course"><summary><span><strong>'+esc(c.title)+'</strong><small>'+c.questions.length+' вопросов'+(c.recipe_changed?' · ⚠ рецептура изменилась':'')+(c.quality_issues?.length?' · ⚠ проверить '+c.quality_issues.length:'')+'</small></span><span class="badge">'+(c.archived?'Архив':c.published?'Опубликовано':'Черновик')+'</span></summary>'+
+      '<div class="manager-course-actions">'+(c.recipe_changed?'<p class="muted">Утверждённые карточки изменились после создания теста. Текущую версию нельзя назначать или проходить. Собери новую версию и проверь вопросы.</p>':'')+'<div class="actions">'+primary+'</div><details class="manager-more"><summary>Дополнительные действия</summary><div class="actions">'+extras+'</div></details></div></details>';
   }
   $('#app').innerHTML=workspaceHeader('Программы','Создавай и назначай курсы, проверяй материалы перед публикацией.')+
     '<details class="card manager-create"><summary><strong>+ Создать материал</strong><span>PDF или вручную</span></summary>'+
