@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
+from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
 from dishes import attach as attach_dishes
 from voice import make_voice_router
 from events import make_events_router
@@ -242,7 +243,20 @@ async def publish(cid:int,request:Request):
         if row['archived']: raise HTTPException(409,'Нельзя опубликовать архивную версию. Создайте копию.')
         if row['kind'] != 'notice' and not row['questions']:
             raise HTTPException(409,'Сначала добавь и проверь вопросы теста. Для курса только на чтение выбери тип «Ознакомление».')
-        c.execute('UPDATE courses SET published=true WHERE id=%s',(cid,));audit(c,u['id'],'course:approved',cid)
+        dish_ids=map_details(c,cid)
+        signature=row['reviewed_dish_signature']
+        if dish_ids and not row['published']:
+            chapters=dish_chapters(c,cid,row['restaurant'])
+            if len(chapters)!=len(dish_ids):
+                raise HTTPException(409,'Карточки изменились или сняты с публикации. Проверь курс перед выпуском.')
+            current=reviewed_dish_signature(chapters)
+            if signature and signature!=current:
+                raise HTTPException(409,'Рецептуры изменились после создания тестов. Подготовь новую версию вопросов.')
+            signature=current
+        elif signature and not dish_ids:
+            raise HTTPException(409,'Утверждённые карточки были удалены из курса. Проверь содержание.')
+        c.execute('UPDATE courses SET published=true,reviewed_dish_signature=%s WHERE id=%s',(signature,cid))
+        audit(c,u['id'],'course:approved',cid)
     return {'ok':True}
 
 @app.post('/api/courses/{cid}/archive')
