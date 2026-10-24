@@ -62,15 +62,15 @@ async function importDishMaterial(e){
  const file=e.target.querySelector('input[name="material"]')?.files?.[0];if(!file)return;
  const mode=e.target.querySelector('select[name="mode"]').value;
  if(file.size>20_000_000){error(Error("Файл больше 20 МБ"));return}
- if(!/\\.(pdf|pptx)$/i.test(file.name)){error(Error("Нужен PPTX или PDF"));return}
- if(mode==='assist'&&!/\\.pptx$/i.test(file.name)){error(Error("ИИ разбирает только PPTX"));return}
+ if(!/\.(pdf|pptx)$/i.test(file.name)){error(Error("Нужен PPTX или PDF"));return}
+ if(mode==='assist'&&!/\.pptx$/i.test(file.name)){error(Error("ИИ разбирает только PPTX"));return}
  if(!confirm('Создать неопубликованные карточки из «'+file.name+'»?'))return;
  const button=e.target.querySelector('button[type="submit"]'),status=$("#dish-import-status");
  button.disabled=true;status.textContent="Извлекаем подписи и изображения, готовим закрытые черновики…";
  const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),160000);
  try{
   const query=new URLSearchParams({filename:file.name,mode});
-  const mime=/\\.pptx$/i.test(file.name)?"application/vnd.openxmlformats-officedocument.presentationml.presentation":"application/pdf";
+  const mime=/\.pptx$/i.test(file.name)?"application/vnd.openxmlformats-officedocument.presentationml.presentation":"application/pdf";
   const r=await fetch("/api/dishes/import?"+query,{method:"POST",
    headers:{Authorization:"Bearer "+token,"Content-Type":mime},body:file,signal:ctrl.signal});
   const v=await r.json().catch(()=>({}));
