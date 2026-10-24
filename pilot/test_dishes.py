@@ -25,6 +25,49 @@ class DishCards(unittest.TestCase):
         self.assertIn("Mozzarella",cards[0]["ingredients"])
         self.assertGreater(len(cards[0]["photo"]),150)
 
+    def test_structured_powerpoint_template_extracts_fields_and_actual_photo(self):
+        from pptx import Presentation
+        from pptx_ttk import template_pptx,extract_pptx
+        deck=Presentation(io.BytesIO(template_pptx()))
+        slide=deck.slides[1]
+        for shape in slide.shapes:
+            if not shape.has_text_frame:continue
+            for placeholder,actual in [
+                ("[Впишите название]","Салат с томатами"),
+                ("[Впишите раздел]","Салаты"),
+                ("[Ингредиент 1\\nИнгредиент 2]","Томаты\\nСыр"),
+                ("[Впишите описание и подачу]","Подача на холодной тарелке"),
+                ("[Перечислите по утверждённой ТТК]","Молоко"),
+                ("[Документ и дата]","ТТК версия 2026"),
+            ]:
+                if placeholder in shape.text:shape.text=shape.text.replace(placeholder,actual)
+        photo=io.BytesIO()
+        Image.new("RGB",(380,270),(180,80,50)).save(photo,"PNG")
+        slide.shapes.add_picture(io.BytesIO(photo.getvalue()),Inches(8.2),Inches(1.2),width=Inches(4))
+        data=io.BytesIO();deck.save(data)
+        rows=extract_pptx(data.getvalue())
+        self.assertEqual(len(rows),1)
+        item=rows[0]
+        self.assertEqual(item["source_page"],2)
+        self.assertEqual(item["title"],"Салат с томатами")
+        self.assertEqual(item["ingredients"],["Томаты","Сыр"])
+        self.assertEqual(item["allergens"],"Молоко")
+        self.assertTrue(item["photo"])
+        self.assertNotIn("Аллергены не подтверждены",item["warning"])
+
+    def test_powerpoint_unknown_allergens_never_claims_no_allergens(self):
+        from pptx import Presentation
+        from pptx_ttk import extract_pptx
+        deck=Presentation()
+        slide=deck.slides.add_slide(deck.slide_layouts[6])
+        txt=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(5),Inches(1))
+        txt.text="НАЗВАНИЕ БЛЮДА:\\nТестовое блюдо"
+        i=io.BytesIO();deck.save(i)
+        cards=extract_pptx(i.getvalue())
+        self.assertEqual(len(cards),1)
+        self.assertEqual(cards[0]["allergens"],"")
+        self.assertIn("Аллергены не подтверждены",cards[0]["warning"])
+
     def test_reject_invalid_pdf(self):
         with self.assertRaises(ValueError):
             extract_pdf(b"not pdf")
@@ -88,6 +131,52 @@ class DishIntegration(unittest.TestCase):
         pic=io.BytesIO();Image.new("RGB",(500,350),(180,80,40)).save(pic,"JPEG")
         p.insert_image(fitz.Rect(550,110,920,350),stream=pic.getvalue())
         return doc.tobytes()
+
+    def test_pptx_template_import_requires_manager_and_allergen_review(self):
+        from pptx import Presentation
+        from pptx_ttk import template_pptx
+        from pptx.util import Inches
+        deck=Presentation(io.BytesIO(template_pptx()))
+        slide=deck.slides[1]
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for old,new in [
+                    ("[Впишите название]","Тестовое блюдо"),
+                    ("[Впишите раздел]","Тестовый раздел"),
+                    ("[Ингредиент 1\\nИнгредиент 2]","Томаты\\nСыр"),
+                    ("[Впишите описание и подачу]","Тестовая подача"),
+                    ("[Документ и дата]","ТТК v1")
+                ]:shape.text=shape.text.replace(old,new)
+        picture=io.BytesIO();Image.new("RGB",(180,130)).save(picture,"PNG")
+        slide.shapes.add_picture(io.BytesIO(picture.getvalue()),Inches(8.1),Inches(1.0),width=Inches(4))
+        output=io.BytesIO();deck.save(output)
+        template=self.client.get("/api/dishes/template",headers=self.headers(10))
+        self.assertEqual(template.status_code,200,template.text[:100])
+        self.assertGreater(len(template.content),1000)
+        self.assertEqual(self.client.get("/api/dishes/template",
+            headers=self.headers(11)).status_code,403)
+        route="/api/dishes/import?filename=MOJO_test.pptx"
+        mimetype={"Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+        self.assertEqual(self.client.post(route,content=output.getvalue(),
+            headers=self.headers(11)|mimetype).status_code,403)
+        result=self.client.post(route,content=output.getvalue(),headers=self.headers(10)|mimetype)
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()["created"],1)
+        row=self.client.get("/api/dishes",headers=self.headers(10)).json()[0]
+        self.assertFalse(row["published"])
+        self.assertEqual(row["title"],"Тестовое блюдо")
+        self.assertEqual(row["ingredients"],["Томаты","Сыр"])
+        self.assertFalse(row["allergens"])
+        self.assertEqual(self.client.get("/api/dishes/"+str(row["id"])+"/photo",
+            headers=self.headers(10)).status_code,200)
+        self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
+            json={"reviewed":True},headers=self.headers(10)).status_code,409)
+        edit={"title":row["title"],"section":row["section"],"ingredients":row["ingredients"],
+              "description":"Подача после проверки","allergens":"Молоко"}
+        saved=self.client.put(f'/api/dishes/{row["id"]}',headers=self.headers(10),json=edit)
+        self.assertEqual(saved.status_code,200,saved.text)
+        self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
+            json={"reviewed":True},headers=self.headers(10)).status_code,200)
 
     def test_manager_import_review_photo_and_archive(self):
         data=self.sample_pdf()
