@@ -64,7 +64,7 @@ async function main() {
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
   assert.match(html, /learning\.js\?v=20261024-ttk1/);
   assert.match(html, /pilot\.js\?v=20261024-dish-ai1/);
-  assert.match(html, /dishes\.js\?v=20261024-ttk1/);
+  assert.match(html, /dishes\.js\?v=20261024-pdf-ai2/);
   assert.match(mainCode, /Скачать шаблон ТТК/);
   assert.match(html, /learning\.css\?v=20261023-events1/);
   assert.match(html, /events\.js\?v=20261023-events1/);
