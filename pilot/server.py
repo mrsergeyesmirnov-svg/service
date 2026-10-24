@@ -75,6 +75,14 @@ def course_data(d):
     if type(score)!=int or not 1<=score<=100: raise HTTPException(422,'Порог от 1 до 100')
     return title,kind,body,source,clean,score
 
+def ensure_dish_quiz_current(c, course_id, restaurant, signature):
+    """Never assign or grade questions against a changed reviewed recipe."""
+    if signature is not None:
+        chapters=dish_chapters(c,course_id,restaurant)
+        if reviewed_dish_signature(chapters)!=signature:
+            raise HTTPException(409,'Рецептура изменилась после утверждения теста. Менеджер должен создать новую версию курса.')
+
+
 def grade(qs, answers):
     return grade_questions(qs, answers)
 
@@ -286,7 +294,9 @@ async def assign(request:Request):
         u=require(c,request);manager(u)
         course=c.execute('SELECT * FROM courses WHERE id=%s AND published AND NOT archived',(d.get('course_id'),)).fetchone()
         if not course: raise HTTPException(422,'Сначала опубликуйте курс')
-        scope(u,course['restaurant']);result=[]
+        scope(u,course['restaurant'])
+        ensure_dish_quiz_current(c,course['id'],course['restaurant'],course['reviewed_dish_signature'])
+        result=[]
         for sid in set(ids):
             person=c.execute('SELECT * FROM staff WHERE id=%s AND active',(sid,)).fetchone()
             if not person: raise HTTPException(422,'Сотрудник не найден')
@@ -315,9 +325,10 @@ def assignments(request:Request):
 def assignment(aid:int,request:Request):
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.title,c.body,c.source,c.questions,c.pass_score,c.archived,c.restaurant,c.reviewed_dish_signature FROM assignments a JOIN courses c ON a.course_id=c.id WHERE a.id=%s AND a.staff_id=%s',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
         if row['archived']: raise HTTPException(410,'Это задание архивировано руководителем')
+        ensure_dish_quiz_current(c,row['course_id'],row['restaurant'],row['reviewed_dish_signature'])
         questions=row['questions']
         row['history']=c.execute('SELECT id,score,passed,created_at FROM attempts WHERE assignment_id=%s ORDER BY id',(aid,)).fetchall()
         row['finished']=any(t['passed'] for t in row['history']) or len(row['history'])>=row['max_attempts']
@@ -342,11 +353,12 @@ async def submit(aid:int,request:Request):
     except (KeyError,ValueError,TypeError): raise HTTPException(422,'Некорректный идентификатор попытки')
     with db() as c:
         u=require(c,request)
-        row=c.execute('SELECT a.*,c.questions,c.pass_score,c.archived FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
+        row=c.execute('SELECT a.*,c.questions,c.pass_score,c.archived,c.restaurant,c.reviewed_dish_signature FROM assignments a JOIN courses c ON c.id=a.course_id WHERE a.id=%s AND a.staff_id=%s FOR UPDATE OF a',(aid,u['id'])).fetchone()
         if not row: raise HTTPException(404)
         if row['archived']:raise HTTPException(410,'Этот тест архивирован руководителем')
         old=c.execute('SELECT id,score,passed FROM attempts WHERE assignment_id=%s AND request_id=%s',(aid,rid)).fetchone()
         if old:return old
+        ensure_dish_quiz_current(c,row['course_id'],row['restaurant'],row['reviewed_dish_signature'])
         if c.execute('SELECT 1 FROM attempts WHERE assignment_id=%s AND passed LIMIT 1',(aid,)).fetchone():raise HTTPException(409,'Тест уже сдан')
         if not row['acknowledged_at']:raise HTTPException(409,'Сначала ознакомьтесь с материалом')
         if not row['questions']:raise HTTPException(422,'У этого материала нет теста')
