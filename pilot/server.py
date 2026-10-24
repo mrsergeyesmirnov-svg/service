@@ -66,7 +66,7 @@ def course_data(d):
     kind=d.get('kind','service')
     if kind not in ('service','ttk','notice'): raise HTTPException(422,'Неизвестный тип')
     qs=d.get('questions',[])
-    if not isinstance(qs,list) or len(qs)>100 or (kind!='notice' and not qs): raise HTTPException(422,'Добавьте от 1 до 100 вопросов')
+    if not isinstance(qs,list) or len(qs)>100: raise HTTPException(422,'Допустимо до 100 вопросов в черновике')
     clean=[]
     for q in qs:
         if not isinstance(q,dict): raise HTTPException(422,'Некорректный вопрос')
