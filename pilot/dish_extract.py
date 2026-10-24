@@ -146,3 +146,86 @@ def extract_pdf(data):
     if not result:
         raise ValueError("Не удалось выделить блюда: требуется PDF с текстовым слоем")
     return result
+
+
+def photos_anywhere(page):
+    """Extract actual embedded dish photos without assuming a PDF slide layout.
+
+    Full-page rasterized screenshots are intentionally NOT treated as food photos.
+    A manager may upload a genuine dish image to the resulting private draft.
+    """
+    photos=[]
+    for block in page.get_text("dict").get("blocks",[]):
+        if block.get("type")!=1 or not block.get("image"):continue
+        rect=fitz.Rect(block["bbox"])
+        if rect.width<90 or rect.height<90:continue
+        if rect.get_area()>page.rect.get_area()*.84:continue
+        if len(block["image"])>6_000_000:continue
+        try:
+            with Image.open(io.BytesIO(block["image"])) as img:
+                if img.width*img.height>15_000_000:continue
+                img=img.convert("RGB")
+                img.thumbnail((900,650))
+                output=io.BytesIO()
+                img.save(output,"JPEG",quality=80,optimize=True)
+                photos.append((rect.get_area(),output.getvalue()))
+        except (OSError,ValueError):
+            continue
+    return sorted(photos,key=lambda v:v[0],reverse=True)
+
+
+def extract_pdf_assisted(data):
+    """Convert text-based legacy PDFs into reviewable MOJO TTK drafts.
+
+    All AI-mapped facts must be checked against extracted source text. No OCR.
+    One slide/page is treated as one dish; multi-dish pages require human review.
+    """
+    from pptx_ttk import assist_map
+
+    if not data.startswith(b"%PDF-") or not 0<len(data)<=20_000_000:
+        raise ValueError("Нужен PDF до 20 МБ")
+    try:
+        doc=fitz.open(stream=data,filetype="pdf")
+    except Exception as exc:
+        raise ValueError("Не удалось открыть PDF") from exc
+    if doc.is_encrypted or len(doc)==0 or len(doc)>20:
+        doc.close()
+        raise ValueError("Для ИИ-преобразования PDF нужен файл до 20 страниц. Раздели длинную презентацию.")
+    slides=[]
+    try:
+        for index,page in enumerate(doc,1):
+            # The existing strict, coordinate-based PDF parser is not used here.
+            texts=[block[4].strip() for block in page.get_text("blocks")
+                   if len(block)>=7 and block[6]==0 and isinstance(block[4],str) and block[4].strip()]
+            if not texts:
+                raise ValueError(
+                    f"На странице {index} PDF нет текстового слоя. "
+                    "Это скан или слайд-картинка; нужен исходный PPTX или ручное заполнение ТТК.")
+            slides.append({"page":index,"texts":texts,"photos":photos_anywhere(page)})
+    finally:
+        doc.close()
+    # The model can map printed text only; its result never bypasses manager review.
+    converted=assist_map(slides)
+    result=[]
+    digest=hashlib.sha256(data).hexdigest()
+    for slide in slides:
+        fields=converted.get(slide["page"],{})
+        photo=slide["photos"][0][1] if slide["photos"] else None
+        warnings=["ИИ распределил текст PDF по полям — обязательно проверь по оригиналу"]
+        if not fields.get("title"):warnings.append("Название не распознано")
+        if not fields.get("ingredients"):warnings.append("Состав не подтверждён")
+        if not fields.get("description"):warnings.append("Описание отсутствует")
+        if not fields.get("allergens"):warnings.append("Аллергены не подтверждены")
+        if len(slide["photos"])>1:warnings.append("На странице несколько фотографий — проверь соответствие")
+        if photo is None:warnings.append("Фото блюда не найдено — добавь вручную")
+        warnings.append("Если на странице несколько блюд, раздели их вручную")
+        result.append({
+            "title":str(fields.get("title") or f"Страница {slide['page']} — уточни блюдо")[:180],
+            "section":str(fields.get("section") or "Раздел не указан")[:100],
+            "ingredients":fields.get("ingredients",[])[:55],
+            "description":str(fields.get("description") or "")[:4500],
+            "allergens":str(fields.get("allergens") or "")[:1200],
+            "source_version":"",
+            "photo":photo,"source_page":slide["page"],"source_slot":0,
+            "source_hash":digest,"warning":"; ".join(warnings)})
+    return result
