@@ -377,12 +377,14 @@ async function generateCourseProposal(cid){
       btn('Проверить кейсы','manager-cases','','secondary')+
       btn('Назад к программам','nav','courses','secondary')+'</div></section>';
   }catch(err){
+    const mapping=await api('learning/'+cid+'/dish-map').catch(()=>({dish_ids:[]}));
+    const materialsAction=mapping.dish_ids.length?'course-map':'course-text-editor';
     $('#app').innerHTML='<h1>Главы сохранены</h1><section class="card">'+
       '<h2>ИИ не подготовил предложения</h2>'+
       '<p>'+esc(err.message)+'</p>'+
       '<p class="muted">Материал остался в закрытом черновике. Проверь главы и повтори генерацию позже. Никаких курсов или тестов автоматически не опубликовано.</p>'+
       '<div class="actions">'+btn('Повторить ИИ-генерацию','ai-generate',cid,'lime-action')+
-      btn('Проверить главы','course-text-editor',cid,'secondary')+
+      btn('Проверить материалы',materialsAction,cid,'secondary')+
       btn('К программам','nav','courses','secondary')+'</div></section>';
   }
   window.scrollTo(0,0);
