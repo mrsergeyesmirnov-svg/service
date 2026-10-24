@@ -70,6 +70,9 @@ class Core(unittest.TestCase):
         self.assertFalse(all(ok for _,ok in evaluate(good)))
         self.assertTrue(any(not ok and 'тест' in name for name,ok in evaluate(good)))
         good['weak_quizzes']=0
+        good['stale_reviewed']=1
+        self.assertFalse(all(ok for _,ok in evaluate(good)))
+        good['stale_reviewed']=0
         good['wow']=0
         self.assertFalse(all(ok for _,ok in evaluate(good)))
 
@@ -437,6 +440,16 @@ class Integration(unittest.TestCase):
             'request_id':str(uuid.uuid4()),'answers':[0]})
         self.assertEqual(attempt.status_code,200,attempt.text)
         self.assertEqual(attempt.json()['score'],100)
+        from datetime import date,timedelta
+        assigned=self.client.post('/api/assignments',headers=manager,json={
+            'course_id':cid,'staff_ids':[101],
+            'deadline':(date.today()+timedelta(days=3)).isoformat(),'max_attempts':2})
+        self.assertEqual(assigned.status_code,200,assigned.text)
+        aid=assigned.json()['created'][0]
+        self.assertEqual(self.client.get(f'/api/assignments/{aid}',
+            headers=trainee).status_code,200)
+        self.assertEqual(self.client.post(f'/api/assignments/{aid}/acknowledge',
+            headers=trainee).status_code,200)
         # A recipe edit cannot silently change a manager-approved, live quiz.
         changed=self.client.put(f'/api/dishes/{did}',headers=manager,json={
             'title':'Synthetic avocado roll','section':'Rolls',
@@ -449,6 +462,12 @@ class Integration(unittest.TestCase):
         self.assertEqual(outdated['chapters'],[])
         self.assertEqual(outdated['questions'],[])
         self.assertEqual(len(outdated['history']),1)
+        self.assertEqual(self.client.get(f'/api/assignments/{aid}',headers=trainee).status_code,409)
+        self.assertEqual(self.client.post(f'/api/assignments/{aid}/submit',
+            headers=trainee,json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,409)
+        self.assertEqual(self.client.post('/api/assignments',headers=manager,json={
+            'course_id':cid,'staff_ids':[102],
+            'deadline':(date.today()+timedelta(days=3)).isoformat(),'max_attempts':2}).status_code,409)
         self.assertEqual(self.client.post(f'/api/learning/{cid}/submit',
             headers=trainee,json={'request_id':str(uuid.uuid4()),'answers':[0]}).status_code,409)
 
