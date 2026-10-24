@@ -157,6 +157,8 @@ CREATE INDEX IF NOT EXISTS voice_transcriptions_daily ON voice_transcriptions(st
 
 -- Archive obsolete tests/courses without deleting staff progress or historical exam results.
 ALTER TABLE courses ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
+-- Non-null only for a reviewed, frozen quiz based on a particular approved dish-card version.
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS reviewed_dish_signature TEXT;
 CREATE INDEX IF NOT EXISTS courses_catalog_visibility ON courses(restaurant,published,archived);
 
 -- Preserve submitted case answers independently of the provider transaction.
