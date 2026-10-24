@@ -27,6 +27,7 @@ class DishCards(unittest.TestCase):
 
     def test_structured_powerpoint_template_extracts_fields_and_actual_photo(self):
         from pptx import Presentation
+        from pptx.util import Inches
         from pptx_ttk import template_pptx,extract_pptx
         deck=Presentation(io.BytesIO(template_pptx()))
         slide=deck.slides[1]
