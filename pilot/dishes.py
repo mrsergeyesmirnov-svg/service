@@ -168,9 +168,10 @@ def attach(db,require,manager,scope,audit):
             u=require(c,request);manager(u);row=find(c,u,cid);scope(u,row["restaurant"])
             if not row["ingredients"] or not row["description"] or row["photo"] is None:
                 raise HTTPException(409,"Для публикации нужны состав, описание и фото")
+            unknown=("не подтвержден","неизвест","не указан","нет данных","не установлен","уточня")
             if row["import_method"]=="pptx" and (
-                not row["allergens"] or row["allergens"].lower() in
-                ("не подтверждено","неизвестно","не указано","нет данных")):
+                not row["allergens"] or
+                any(item in row["allergens"].casefold() for item in unknown)):
                 raise HTTPException(409,"Проверь аллергены по утверждённой ТТК: неизвестно не означает отсутствуют")
             c.execute("UPDATE dish_cards SET published=true,warning=NULL,updated_at=now() WHERE id=%s",(cid,))
             audit(c,u["id"],"dishes:publish",cid)
