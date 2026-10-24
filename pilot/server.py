@@ -189,6 +189,8 @@ def courses(request:Request):
         rows=c.execute('SELECT * FROM courses WHERE (%s OR restaurant=%s) ORDER BY archived ASC,id DESC',(u['role']=='manager',u['restaurant'])).fetchall()
         for row in rows:
             row['quality_issues']=quality_issues(row['questions'])
+            row['recipe_changed']=bool(row['reviewed_dish_signature'] and
+                 reviewed_dish_signature(dish_chapters(c,row['id'],row['restaurant'])) != row['reviewed_dish_signature'])
         return rows
 
 @app.post('/api/courses')
