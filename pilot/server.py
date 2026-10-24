@@ -79,7 +79,7 @@ def ensure_dish_quiz_current(c, course_id, restaurant, signature):
     """Never assign or grade questions against a changed reviewed recipe."""
     if signature is not None:
         chapters=dish_chapters(c,course_id,restaurant)
-        if reviewed_dish_signature(chapters)!=signature:
+        if reviewed_dish_signature(chapters or [])!=signature:
             raise HTTPException(409,'Рецептура изменилась после утверждения теста. Менеджер должен создать новую версию курса.')
 
 
@@ -190,7 +190,7 @@ def courses(request:Request):
         for row in rows:
             row['quality_issues']=quality_issues(row['questions'])
             row['recipe_changed']=bool(row['reviewed_dish_signature'] and
-                 reviewed_dish_signature(dish_chapters(c,row['id'],row['restaurant'])) != row['reviewed_dish_signature'])
+                 reviewed_dish_signature(dish_chapters(c,row['id'],row['restaurant']) or []) != row['reviewed_dish_signature'])
         return rows
 
 @app.post('/api/courses')
