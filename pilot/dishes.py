@@ -115,7 +115,8 @@ def attach(db,require,manager,scope,audit):
                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                   ON CONFLICT(restaurant,source_hash,source_page,source_slot) DO NOTHING RETURNING id""",
                   (restaurant,uid,item["title"],item["section"],Jsonb(item["ingredients"]),
-                   item["description"],item.get("allergens",""),item["photo"],source,
+                   item["description"],item.get("allergens",""),item["photo"],
+                   source+(" · "+item["source_version"] if item.get("source_version") else ""),
                    item["source_page"],item["source_slot"],item["source_hash"],
                    item["warning"],import_method)).fetchone()
                 if row:created+=1
