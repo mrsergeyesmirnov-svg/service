@@ -36,7 +36,7 @@ class DishCards(unittest.TestCase):
             for placeholder,actual in [
                 ("[Впишите название]","Салат с томатами"),
                 ("[Впишите раздел]","Салаты"),
-                ("[Ингредиент 1\\nИнгредиент 2]","Томаты\\nСыр"),
+                ("[Ингредиент 1\nИнгредиент 2]","Томаты\nСыр"),
                 ("[Впишите описание и подачу]","Подача на холодной тарелке"),
                 ("[Перечислите по утверждённой ТТК]","Молоко"),
                 ("[Документ и дата]","ТТК версия 2026"),
@@ -58,11 +58,12 @@ class DishCards(unittest.TestCase):
 
     def test_powerpoint_unknown_allergens_never_claims_no_allergens(self):
         from pptx import Presentation
+        from pptx.util import Inches
         from pptx_ttk import extract_pptx
         deck=Presentation()
         slide=deck.slides.add_slide(deck.slide_layouts[6])
         txt=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(5),Inches(1))
-        txt.text="НАЗВАНИЕ БЛЮДА:\\nТестовое блюдо"
+        txt.text="НАЗВАНИЕ БЛЮДА:\nТестовое блюдо"
         i=io.BytesIO();deck.save(i)
         cards=extract_pptx(i.getvalue())
         self.assertEqual(len(cards),1)
@@ -144,7 +145,7 @@ class DishIntegration(unittest.TestCase):
                 for old,new in [
                     ("[Впишите название]","Тестовое блюдо"),
                     ("[Впишите раздел]","Тестовый раздел"),
-                    ("[Ингредиент 1\\nИнгредиент 2]","Томаты\\nСыр"),
+                    ("[Ингредиент 1\nИнгредиент 2]","Томаты\nСыр"),
                     ("[Впишите описание и подачу]","Тестовая подача"),
                     ("[Документ и дата]","ТТК v1")
                 ]:shape.text=shape.text.replace(old,new)
