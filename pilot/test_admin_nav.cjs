@@ -78,6 +78,7 @@ async function main() {
     calls.push({path,method,body});
     if(path==='assignments/42')return assignment;
     if(path==='learning/7')return {id:7,title:'Course',source:'Synthetic',chapters:[{id:'a',title:'Chapter',body:'Text'}],read:[],questions:[],history:[]};
+    if(path==='wine-cards/7')return {cards:[],pairs:[],ratings:{}};
     if(path==='assignments/42/submit')return {score:50,passed:false};
     if(path==='learning/7/submit')return {score:100,passed:true,review:[]};
     throw Error('Unexpected '+path);
