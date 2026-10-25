@@ -1,3 +1,6 @@
+async function loadOptionalWine(cid){
+ try{return await api('wine-cards/'+cid)}catch(err){error('Карточки вина временно недоступны. Можно продолжить изучение курса.');return {pairs:[],ratings:{}}}
+}
 // The learning screens use server-authenticated identity and PostgreSQL progress.
 function questionInput(q,name,value){
  if(q.type==='ingredients')return `<label>Перечисли состав по памяти: один ингредиент на строку<textarea name="${name}" required maxlength="3000" placeholder="Напиши состав…">${esc(value||'')}</textarea></label><p class="muted">Количество ингредиентов и подсказки появятся только после ответа.</p>`;
@@ -68,7 +71,7 @@ async function study(id){
  activeAssignment=null;
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
  activeCourse=await api('learning/'+id);
- activeCourse.wine=await api('wine-cards/'+id);
+ activeCourse.wine=await loadOptionalWine(id);
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
  if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
  if(activeCourse.chapters.length&&activeCourse.chapters.every(c=>activeCourse.read.includes(c.id))&&
@@ -81,7 +84,7 @@ async function studyAssignment(id){
  const course=await api('learning/'+assignment.course_id);
  activeAssignment=assignment;
  activeCourse={...course,questions:assignment.questions,history:assignment.history,pass_score:assignment.pass_score};
- activeCourse.wine=await api('wine-cards/'+assignment.course_id);
+ activeCourse.wine=await loadOptionalWine(assignment.course_id);
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
  if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
  showChapter();
