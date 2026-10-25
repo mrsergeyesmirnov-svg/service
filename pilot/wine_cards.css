@@ -1,0 +1,36 @@
+/* Wine recall / MOJO Academy — light, quiet learner UI. */
+.wine-stats{justify-content:space-between;align-items:center;gap:10px;font-size:13px}
+.wine-stats span{color:#67766f}
+.wine-caption{font-size:13px;color:#5e7467;margin:12px 0}
+.wine-flip-card{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;text-align:left;gap:25px;
+  width:100%;min-height:310px;background:#fff;border:1px solid #e6ede8;color:#233f34;border-radius:24px;
+  padding:24px;box-shadow:0 9px 30px rgba(35,63,52,.06);white-space:normal}
+.wine-flip-card:focus-visible{outline:3px solid #a4c973;outline-offset:3px}
+.wine-card-hint,.wine-card-foot{font-size:12px;color:#6a7a70;font-weight:500}
+.wine-card-foot{text-align:center;padding-top:15px;border-top:1px solid #e6ede8}
+.wine-question{font-size:25px;line-height:1.35;font-weight:750;text-align:center;align-self:center;overflow-wrap:anywhere;padding:20px 0}
+.wine-fact{display:grid;grid-template-columns:105px minmax(0,1fr);gap:12px;border-bottom:1px solid #e6ede8;padding:10px 0;line-height:1.45}
+.wine-fact span{color:#718075;font-size:12px}
+.wine-fact strong{font-size:16px;overflow-wrap:anywhere}
+.wine-rating-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:18px}
+.wine-rating-actions button{margin:0;padding:14px 8px;min-height:48px;font-size:13px}
+.wine-rating-actions .lime-action{background:#233f34;color:white}
+.wine-source,.wine-instruction{font-size:13px;line-height:1.55;margin:12px 0}
+.wine-leave{margin-top:16px}
+.wine-leave button{font-size:13px}
+.wine-finished h1{font-size:24px}
+.wine-editor-row label{display:block;font-size:13px;margin-top:13px}
+.wine-editor-row input{display:block;width:100%;min-width:0;margin-top:5px;font-size:16px}
+.wine-editor-row .row{align-items:center;justify-content:space-between}
+.wine-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:390px){.wine-form-grid{grid-template-columns:1fr}.wine-flip-card{min-height:280px;padding:20px}.wine-fact{grid-template-columns:90px 1fr}}
+
+/* Approved white variant of the staff home screen; manager layout unchanged. */
+.journey-progress{background:white}
+.journey-next{background:white;color:#233f34;border:1px solid #e6ede8;box-shadow:0 5px 26px rgba(35,63,52,.04)}
+.journey-next .eyebrow{color:#5c7767}
+.journey-next h1,.journey-next h2{color:#233f34}
+.journey-next p{color:#5c6c62}
+.journey-next .journey-steps{color:#5e7566}
+.journey-next .lime-action{background:#233f34;color:#fff}
+.journey-next button.secondary{background:#eaf0e3;color:#233f34}
