@@ -1,6 +1,6 @@
 'use strict';
 // Wine recall is intentionally separate from examinations and AI grading.
-let wineQueue=[],wineFlipped=false,wineData=null,wineEditorId=null,wineDraft=[],wineReadOnly=false;
+let wineQueue=[],wineFlipped=false,wineData=null,wineEditorId=null,wineEditorTitle='',wineDraft=[],wineReadOnly=false;
 
 async function openWinePractice(repeatAll=false){
  if(!activeCourse)throw Error('Сначала открой учебный курс');
@@ -28,7 +28,7 @@ function renderWinePractice(){
    btn('Перейти к тесту','wine-continue','','lime-action')+'</div></section>'+
    btn('К курсу','wine-return','','secondary');window.scrollTo(0,0);return;
  }
- const p=wineQueue[0],position=all.length-wineQueue.filter(x=>ratings[x.id]!=='know').length;
+ const p=wineQueue[0];
  const details=wineFlipped?p.answer.map(([key,val])=>'<div class="wine-fact"><span>'+esc(key)+'</span><strong>'+esc(val)+'</strong></div>').join(''):
   '<div class="wine-question">'+esc(p.prompt)+'</div>';
  const direction=p.direction==='forward'?'Название → сорт, страна, регион':'Сорт, страна, регион → название';
@@ -65,9 +65,9 @@ async function rateWine(rating){
 async function openWineEditor(cid){
  if(!isManager())throw Error('Доступно только менеджеру');
  const data=await api('wine-cards/'+cid);
- wineEditorId=cid;wineReadOnly=data.published;
+ wineEditorId=cid;wineEditorTitle=data.title;wineReadOnly=data.published;
  wineDraft=data.cards.map(c=>({...c}));
- renderWineEditor(data.title);
+ renderWineEditor();
 }
 
 function collectWineDraft(){
@@ -80,10 +80,10 @@ function collectWineDraft(){
  });
 }
 
-function renderWineEditor(title){
+function renderWineEditor(){
  const disabled=wineReadOnly?' disabled':'';
  $('#app').innerHTML=btn('← К программам','nav','courses','secondary')+
-  '<h1>Карточки вина</h1><p class="muted">'+esc(title)+'</p>'+
+  '<h1>Карточки вина</h1><p class="muted">'+esc(wineEditorTitle)+'</p>'+
   '<div class="card"><p>Каждая позиция: название, сорт, страна, регион и источник. После сохранения система создаёт карточки в обе стороны.</p>'+
   '<p class="muted">Если несколько вин имеют одинаковые сорт, страну и регион, обратная карточка покажет все подходящие названия. Система ничего не придумывает.</p>'+
   (wineReadOnly?'<p><strong>Опубликованная версия закрыта для изменений.</strong> Для обновления винной карты создай новый курс и заново утверди карточки.</p>':'<p><strong>Перед сохранением сверь каждую позицию с действующей винной картой MOJO.</strong></p>')+'</div>'+
@@ -135,10 +135,10 @@ document.addEventListener('click',async e=>{
    collectWineDraft();
    if(wineDraft.length>=80)throw Error('Не больше 80 винных позиций в одном курсе');
    wineDraft.push({name:'',grape:'',country:'',region:'',source:wineDraft.at(-1)?.source||''});
-   renderWineEditor($('#app h1')?.textContent==='Карточки вина'?'Винная карта MOJO':'Курс');
+   renderWineEditor();
   }
   if(action==='wine-remove'){
-   collectWineDraft();wineDraft.splice(Number(id),1);renderWineEditor('Винная карта MOJO');
+   collectWineDraft();wineDraft.splice(Number(id),1);renderWineEditor();
   }
   if(action==='wine-save')await saveWineEditor();
  }catch(err){error(err)}finally{b.disabled=false}
