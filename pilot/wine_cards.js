@@ -52,14 +52,21 @@ function renderWinePractice(){
  window.scrollTo(0,0);
 }
 
+let wineRatingPending=false;
 async function rateWine(rating){
+ if(wineRatingPending)return;
  if(!wineFlipped||!wineQueue.length)throw Error('Сначала открой ответ на карточке');
  const p=wineQueue[0];
+ wineRatingPending=true;
+ const controls=[...document.querySelectorAll('[data-action^="wine-"]')];
+ controls.forEach(b=>b.disabled=true);
+ try{
  await api('wine-cards/'+activeCourse.id+'/rating','POST',{id:p.id,rating});
  wineData.ratings[p.id]=rating;
  wineQueue.shift();
  if(rating!=='know')wineQueue.push(p);
  wineFlipped=false;renderWinePractice();
+ }finally{wineRatingPending=false;controls.forEach(b=>b.disabled=false)}
 }
 
 async function openWineEditor(cid){
