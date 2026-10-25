@@ -104,6 +104,22 @@ def make_router(db, require, manager, scope, audit):
                 'ratings': {k: v for k, v in ratings.items() if k in allowed},
             }
 
+    @router.post('/{cid}/suggest')
+    def suggest_cards(cid: int, request: Request):
+        from course_ai import suggest_wine_cards
+        with db() as c:
+            user = require(c, request)
+            manager(user)
+            course = c.execute('SELECT id,restaurant,published,archived,body FROM courses WHERE id=%s', (cid,)).fetchone()
+            if not course:
+                raise HTTPException(404, 'Курс не найден')
+            scope(user, course['restaurant'])
+            if course['published'] or course['archived']:
+                raise HTTPException(409, 'Создай черновик новой версии курса')
+            outline = c.execute('SELECT chapters FROM course_text_outline WHERE course_id=%s', (cid,)).fetchone()
+            chapters = outline['chapters'] if outline else [{'body':course['body'], 'source':'Материал курса'}]
+        return {'cards': suggest_wine_cards(chapters)}
+
     @router.put('/{cid}')
     async def save_cards(cid: int, request: Request):
         payload = await request.json()
