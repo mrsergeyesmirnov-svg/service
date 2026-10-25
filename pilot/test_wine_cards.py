@@ -28,6 +28,7 @@ class WineUnit(unittest.TestCase):
         self.assertEqual(category('Винная карта MOJO'), 'bar')
         self.assertEqual(category('Вина MOJO'), 'bar')
         self.assertEqual(category('Wine MOJO'), 'bar')
+        self.assertEqual(category('Меню: винегрет'), 'menu')
 
     def test_validation_keeps_only_reviewed_exact_source_data(self):
         self.assertEqual(validate_wines({'cards':[W1], 'reviewed':True}), [W1])
