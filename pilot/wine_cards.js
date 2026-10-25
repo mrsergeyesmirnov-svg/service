@@ -104,7 +104,7 @@ function renderWineEditor(){
    '<label>Регион<input name="region" maxlength="140" required'+disabled+' value="'+esc(card.region)+'"></label></div>'+
    '<label>Источник / редакция винной карты<input name="source" maxlength="260" required'+disabled+' value="'+esc(card.source)+'" placeholder="Документ и дата редакции"></label>'+
    '</section>').join('')+'</form>'+
-   (!wineReadOnly?'<div class="actions">'+btn('Добавить вино','wine-add','','secondary')+
+   (!wineReadOnly?'<div class="actions">'+btn('Создать из материалов курса (ИИ)','wine-suggest','','lime-action')+btn('Добавить вино','wine-add','','secondary')+
    btn('Сверено с источником — сохранить','wine-save','','lime-action')+'</div>':'')+
    btn('К программам','nav','courses','secondary')+
    '<p class="muted">До 80 позиций на курс. История экзаменов не изменяется.</p>';
@@ -124,7 +124,7 @@ document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
  if(!['wine-practice','wine-flip','wine-rate','wine-repeat','wine-return','wine-continue',
-       'wine-editor','wine-add','wine-remove','wine-save'].includes(action))return;
+       'wine-editor','wine-add','wine-remove','wine-save','wine-suggest'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='wine-practice')await openWinePractice();
@@ -146,6 +146,12 @@ document.addEventListener('click',async e=>{
   }
   if(action==='wine-remove'){
    collectWineDraft();wineDraft.splice(Number(id),1);renderWineEditor();
+  }
+  if(action==='wine-suggest'){
+   collectWineDraft();
+   if(wineDraft.length&&!confirm('Заменить текущий черновик предложениями из материалов курса?'))return;
+   b.textContent='Извлекаем карточки…';
+   try{const proposal=await api('wine-cards/'+wineEditorId+'/suggest','POST',{});wineDraft=proposal.cards;renderWineEditor()}finally{b.textContent='Создать из материалов курса (ИИ)'}
   }
   if(action==='wine-save')await saveWineEditor();
  }catch(err){error(err)}finally{b.disabled=false}
