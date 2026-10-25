@@ -23,6 +23,12 @@ W2 = dict(name='Test Estate Sauvignon Blanc', grape='Sauvignon Blanc',
 
 
 class WineUnit(unittest.TestCase):
+    def test_wine_courses_appear_in_bar_filter(self):
+        from learning import category
+        self.assertEqual(category('Винная карта MOJO'), 'bar')
+        self.assertEqual(category('Вина MOJO'), 'bar')
+        self.assertEqual(category('Wine MOJO'), 'bar')
+
     def test_validation_keeps_only_reviewed_exact_source_data(self):
         self.assertEqual(validate_wines({'cards':[W1], 'reviewed':True}), [W1])
         for payload in [
