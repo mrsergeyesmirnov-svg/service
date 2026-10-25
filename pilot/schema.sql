@@ -196,3 +196,18 @@ CREATE TABLE IF NOT EXISTS event_signups (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY(event_id,staff_id)
 );
+
+
+-- Reviewed, fixed-version wine recall decks; no AI inference and no exam scoring.
+CREATE TABLE IF NOT EXISTS course_wine_cards (
+ course_id BIGINT PRIMARY KEY REFERENCES courses(id),
+ cards JSONB NOT NULL DEFAULT '[]',
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS wine_card_progress (
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ ratings JSONB NOT NULL DEFAULT '{}',
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(staff_id,course_id)
+);
