@@ -14,7 +14,7 @@ bash pilot/backup.sh
 OLD_IMAGE="$(docker inspect --format '{{.Image}}' service-academy-api)"
 RELEASE="service-academy-pilot:update-$(date -u +%Y%m%dT%H%M%SZ)"
 docker build -t "$RELEASE" -f pilot/Dockerfile .
-docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot
+docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot test_wine_cards
 # Additive Academy-only schema change. Apply after backup, before switching the API.
 # No rows or historical scores are deleted.
 # All statements in schema.sql are additive (CREATE IF NOT EXISTS / ALTER ADD IF NOT EXISTS).
