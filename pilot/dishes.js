@@ -5,7 +5,7 @@ function dishPhoto(id,cls=""){return '<div class="dish-photo '+cls+'" data-dish-
 async function showDishPhotos(){
  for(const node of document.querySelectorAll("[data-dish-picture]")){
   const id=Number(node.dataset.dishPicture);
-  if(!dishCards.find(x=>x.id===id)?.has_photo && !activeCourse?.chapters?.some(c=>c.dish_id===id&&c.has_photo))continue;
+  if(!learningCourses.some(c=>c.cover_dish_id===id) && !dishCards.find(x=>x.id===id)?.has_photo && !activeCourse?.chapters?.some(c=>c.dish_id===id&&c.has_photo))continue;
   if(!dishImageUrls.has(id)){
    try{
     const r=await fetch("/api/dishes/"+id+"/photo",{headers:{Authorization:"Bearer "+token}});
