@@ -1,6 +1,10 @@
 async function loadOptionalWine(cid){
  try{return await api('wine-cards/'+cid)}catch(err){error('Карточки вина временно недоступны. Можно продолжить изучение курса.');return {pairs:[],ratings:{}}}
 }
+async function loadOptionalMenu(cid){
+ try{return await api('menu-cards/'+cid)}
+ catch(err){error('Карточки меню временно недоступны. Можно продолжить курс.');return {pairs:[],ratings:{}}}
+}
 // The learning screens use server-authenticated identity and PostgreSQL progress.
 function questionInput(q,name,value){
  if(q.type==='ingredients')return `<label>Перечисли состав по памяти: один ингредиент на строку<textarea name="${name}" required maxlength="3000" placeholder="Напиши состав…">${esc(value||'')}</textarea></label><p class="muted">Количество ингредиентов и подсказки появятся только после ответа.</p>`;
@@ -48,6 +52,7 @@ async function study(id){
  $('#app').innerHTML='<p role="status">Открываем курс…</p>';
  activeCourse=await api('learning/'+id);
  activeCourse.wine=await loadOptionalWine(id);
+ activeCourse.menu=activeCourse.chapters.some(x=>x.kind==='dish')?await loadOptionalMenu(id):{pairs:[],ratings:{}};
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
  if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
  if(activeCourse.chapters.length&&activeCourse.chapters.every(c=>activeCourse.read.includes(c.id))&&
@@ -61,6 +66,7 @@ async function studyAssignment(id){
  activeAssignment=assignment;
  activeCourse={...course,questions:assignment.questions,history:assignment.history,pass_score:assignment.pass_score};
  activeCourse.wine=await loadOptionalWine(assignment.course_id);
+ activeCourse.menu=activeCourse.chapters.some(x=>x.kind==='dish')?await loadOptionalMenu(assignment.course_id):{pairs:[],ratings:{}};
  chapterIndex=activeCourse.chapters.findIndex(c=>!activeCourse.read.includes(c.id));
  if(chapterIndex<0)chapterIndex=Math.max(0,activeCourse.chapters.length-1);
  showChapter();
@@ -93,6 +99,7 @@ function showStudyComplete(){
   '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
   '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+ 
   (c.wine?.pairs.length?btn('Повторить карточки вина','wine-practice','','secondary'):'')+
+  (c.menu?.pairs.length?btn('Повторить карточки меню','menu-practice','','secondary'):'')+
   (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):btn('Практика ситуаций →','nav','cases','lime-action'))+
   btn('Повторить материал','chapter-review','','secondary')+'</section>'+
   btn('К моему пути','nav','home','secondary');
@@ -110,9 +117,9 @@ function showChapter(){
  chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
  const p=c.chapters[chapterIndex],read=c.chapters.filter(p=>c.read.includes(p.id)).length;
  const last=chapterIndex===c.chapters.length-1,passed=c.history.some(t=>t.passed);
- const nextLabel=last?(c.wine?.pairs.length&&!passed?'Перейти к карточкам вина →':c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
+ const nextLabel=last?(c.wine?.pairs.length&&!passed?'Перейти к карточкам вина →':c.menu?.pairs.length&&!passed?'Перейти к карточкам меню →':c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
  $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
-  '<div class="lesson-stage"><span class="stage-active">1 · Изучение</span>'+(c.wine?.pairs.length?'<span>2 · Карточки</span><span>3 · Тест</span><span>4 · Практика</span>':'<span>2 · Тест</span><span>3 · Практика</span>')+'</div>'+
+  '<div class="lesson-stage"><span class="stage-active">1 · Изучение</span>'+((c.wine?.pairs.length||c.menu?.pairs.length)?'<span>2 · Карточки</span><span>3 · Тест</span><span>4 · Практика</span>':'<span>2 · Тест</span><span>3 · Практика</span>')+'</div>'+
   '<div class="row lesson-progress"><strong>Глава '+(chapterIndex+1)+' / '+c.chapters.length+'</strong><span>'+read+' прочитано</span></div>'+
   '<progress max="'+c.chapters.length+'" value="'+read+'"></progress>'+
   '<article class="card chapter"><span class="badge">'+(c.read.includes(p.id)?'Прочитано':'Урок')+'</span>'+
@@ -133,7 +140,7 @@ function showPostTestPractice(dishId){
  const selected=cards.find(x=>x.dish_id===dishId)||cards[0];
  const options=cards.map(x=>'<option value="'+x.dish_id+'"'+(x.dish_id===selected.dish_id?' selected':'')+'>'+esc(x.title)+'</option>').join('');
  $('#app').innerHTML=studyHeader('Практика · после теста')+
- '<div class="lesson-stage"><span>1 · Изучение</span>'+(c.wine?.pairs.length?'<span>2 · Карточки</span><span>3 · Тест</span><span class="stage-active">4 · Практика</span>':'<span>2 · Тест</span><span class="stage-active">3 · Практика</span>')+'</div><section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
+ '<div class="lesson-stage"><span>1 · Изучение</span>'+((c.wine?.pairs.length||c.menu?.pairs.length)?'<span>2 · Карточки</span><span>3 · Тест</span><span class="stage-active">4 · Практика</span>':'<span>2 · Тест</span><span class="stage-active">3 · Практика</span>')+'</div><section class="card lesson-ai"><p class="eyebrow">Ситуационная тренировка</p>'+
  '<h1>Презентуй блюдо гостю</h1>'+
  '<p class="muted">Представь, что гость спрашивает об одном из блюд MOJO. Ты уже изучил материал и прошёл тест. Сейчас попробуй объяснить его своими словами, как за столом.</p>'+
  '<label>Выбери блюдо для презентации<select id="practice-dish-select">'+options+'</select></label>'+
@@ -194,7 +201,7 @@ function showStudyQuiz(){
   return;
  }
  const c=activeCourse,q=c.questions[quizIndex];
- $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<div class="lesson-stage"><span>1 · Изучение</span>${c.wine?.pairs.length?'<span>2 · Карточки</span><span class="stage-active">3 · Тест</span><span>4 · Практика</span>':'<span class="stage-active">2 · Тест</span><span>3 · Практика</span>'}</div><progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
+ $('#app').innerHTML=studyHeader(`Вопрос ${quizIndex+1} из ${c.questions.length}`)+`<div class="lesson-stage"><span>1 · Изучение</span>${(c.wine?.pairs.length||c.menu?.pairs.length)?'<span>2 · Карточки</span><span class="stage-active">3 · Тест</span><span>4 · Практика</span>':'<span class="stage-active">2 · Тест</span><span>3 · Практика</span>'}</div><progress max="${c.questions.length}" value="${quizIndex+1}"></progress><form id="study-quiz"><h1>${esc(q.question)}</h1>${questionInput(q,'answer',quizAnswers[quizIndex])}<div class="actions">${quizIndex?btn('Назад','quiz-prev','','secondary'):''}<button type="submit">${quizIndex===c.questions.length-1?'Узнать результат':'Следующий вопрос →'}</button></div><p id="quiz-state" role="status"></p></form>`;
  if(quizIndex)$('#study-quiz [data-action]').type='button';
  $('#study-quiz').onsubmit=async e=>{
   e.preventDefault();quizAnswers[quizIndex]=readAnswer(q,new FormData(e.target),'answer');
@@ -277,6 +284,7 @@ document.addEventListener('click',async e=>{
    if(chapterIndex<activeCourse.chapters.length-1){chapterIndex++;showChapter()}
    else if(activeCourse.history.some(t=>t.passed))showStudyComplete();
    else if(activeCourse.wine?.pairs.length)await openWinePractice();
+   else if(activeCourse.menu?.pairs.length)await openMenuPractice();
    else if(!activeCourse.questions.length)showStudyComplete();
    else {quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz()}
   }

@@ -211,3 +211,13 @@ CREATE TABLE IF NOT EXISTS wine_card_progress (
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  PRIMARY KEY(staff_id,course_id)
 );
+
+
+-- Review-only menu recall progress; key contains the reviewed card version.
+CREATE TABLE IF NOT EXISTS menu_card_progress (
+  staff_id BIGINT NOT NULL REFERENCES staff(id),
+  course_id BIGINT NOT NULL REFERENCES courses(id),
+  ratings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY(staff_id,course_id)
+);
