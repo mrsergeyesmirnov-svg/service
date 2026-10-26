@@ -62,9 +62,11 @@ async function main() {
   assert.match(code, /await generateCourseProposal\(cid\)/);
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261024-ttk1/);
-  assert.match(html, /pilot\.js\?v=20261024-dish-ai1/);
+  assert.match(html, /learning\.js\?v=20261026-wine1/);
+  assert.match(html, /pilot\.js\?v=20261026-wine1/);
   assert.match(html, /dishes\.js\?v=20261024-pdf-ai2/);
+  assert.match(html, /wine_cards\.js\?v=20261026-1/);
+  assert.match(html, /wine_cards\.css\?v=20261026-1/);
   assert.match(mainCode, /Скачать шаблон ТТК/);
   assert.match(html, /learning\.css\?v=20261023-events1/);
   assert.match(html, /events\.js\?v=20261023-events1/);
@@ -76,6 +78,7 @@ async function main() {
     calls.push({path,method,body});
     if(path==='assignments/42')return assignment;
     if(path==='learning/7')return {id:7,title:'Course',source:'Synthetic',chapters:[{id:'a',title:'Chapter',body:'Text'}],read:[],questions:[],history:[]};
+    if(path==='wine-cards/7')return {cards:[],pairs:[],ratings:{}};
     if(path==='assignments/42/submit')return {score:50,passed:false};
     if(path==='learning/7/submit')return {score:100,passed:true,review:[]};
     throw Error('Unexpected '+path);

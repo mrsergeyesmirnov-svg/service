@@ -66,7 +66,9 @@ def text_outline_chapters(raw):
 def category(title):
     title = title.lower()
     if 'коф' in title: return 'coffee'
-    if any(w in title for w in ('бар', 'коктейл', 'напит', 'чай')): return 'bar'
+    if (any(w in title for w in ('бар', 'коктейл', 'напит', 'чай')) or
+        re.search(r'\b(вино|вина|винная|винные|винный|винную|винной|wine|wines)\b', title)):
+        return 'bar'
     if any(w in title for w in ('сервис', 'обслуж', 'стандарт', 'wow', 'вау', 'smile', 'ценност', 'гостеприимств')): return 'service'
     return 'menu'
 

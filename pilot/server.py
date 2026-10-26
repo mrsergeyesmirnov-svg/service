@@ -14,6 +14,7 @@ from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
 from dishes import attach as attach_dishes
 from voice import make_voice_router
 from events import make_events_router
+from wine_cards import make_router as make_wine_cards_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -101,6 +102,7 @@ async def limits(request, call_next):
 
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_learning_router(lambda: db(), require, manager, scope, grade, audit))
+app.include_router(make_wine_cards_router(lambda: db(), require, manager, scope, audit))
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
@@ -390,6 +392,11 @@ def css():return FileResponse(BASE/'pilot.css',media_type='text/css')
 def learning_script():return FileResponse(BASE/'learning.js',media_type='application/javascript')
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
+
+@app.get('/pilot/wine_cards.js')
+def wine_script():return FileResponse(BASE/'wine_cards.js',media_type='application/javascript')
+@app.get('/pilot/wine_cards.css')
+def wine_styles():return FileResponse(BASE/'wine_cards.css',media_type='text/css')
 
 @app.get('/pilot/events.js')
 def events_script():return FileResponse(BASE/'events.js',media_type='application/javascript')
