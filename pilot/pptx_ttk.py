@@ -46,6 +46,7 @@ def slide_content(slide):
             if len(data)>6_000_000:continue
             with Image.open(io.BytesIO(data)) as im:
                 if im.width*im.height>15_000_000:continue
+                # Legacy MOJO station cards were exported as complete 1250x703 slide\n                # screenshots. They contain headings, tables and tiny food photos.\n                # Never label the entire station card as a dish photograph.\n                # This is deliberately a narrowly scoped guard, not a global ban\n                # on landscape photographs of other dimensions.\n                if im.size == (1250,703):continue
                 im=im.convert("RGB");im.thumbnail((900,650))
                 buf=io.BytesIO();im.save(buf,"JPEG",quality=80,optimize=True)
                 photos.append((shape.width*shape.height,buf.getvalue()))
