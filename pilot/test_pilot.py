@@ -14,6 +14,19 @@ def signed(uid=101,age=0):
     return urlencode(d)
 
 class Core(unittest.TestCase):
+    def test_entrypoint_assets_are_served(self):
+        import re
+        client = TestClient(server.app)
+        entry = client.get('/pilot/')
+        self.assertEqual(entry.status_code, 200)
+        paths = re.findall(r'(?:src|href)="(/pilot/[^"?]+)', entry.text)
+        self.assertIn('/pilot/learner.css', paths)
+        for path in paths:
+            response = client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertTrue(response.content, path)
+
+
     def test_pdf_numbered_sections_become_distinct_chapters(self):
         import fitz
         from course_pdf import course_chapters_from_pdf
