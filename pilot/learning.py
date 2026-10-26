@@ -232,7 +232,8 @@ def make_learning_router(db, require, manager, scope, grade, audit):
                     id=r['id'], title=r['title'], category=category(r['title']),
                     chapters=len(parts), read=len(set(r['chapter_ids'] or []) & {p['id'] for p in parts}),
                     passed=r['passed'], best_score=r['best_score'], questions=len(course_questions(c, r, parts)),
-                    structured=bool(parts and parts[0].get('kind')=='dish')
+                    structured=bool(parts and parts[0].get('kind')=='dish'),
+                    cover_dish_id=next((p['dish_id'] for p in parts if p.get('has_photo')), None)
                 ))
             return result
 

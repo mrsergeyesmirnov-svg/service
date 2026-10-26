@@ -15,11 +15,13 @@ const btn = (label, action, id = "", cls = "") =>
   '<button class="' + cls + '" data-action="' + action + '" data-id="' + id + '">' + label + '</button>';
 const ctx = {
   console,
-  document: { addEventListener() {} },
+  document: { addEventListener() {},querySelectorAll:()=>[] },
+  showDishPhotos:()=>{},
+  eventDate:x=>x,
   window: { scrollTo() {} },
   user: { id: 1, role: "manager", restaurant: "MOJO", name: "Manager" },
   roles: { manager: "Менеджер по сервису" },
-  $: selector => selector === "#app" ? root : null,
+  $: selector => selector === "#app" ? root : {oninput:null},
   esc: x => String(x ?? ""),
   btn,
   navSvg: () => "<svg></svg>",
@@ -28,7 +30,7 @@ const ctx = {
   dateLabel: () => "24.10.2026",
   api: async endpoint => {
     if (endpoint === "learning") return [course];
-    if (endpoint === "assignments") return [];
+    if (endpoint === "assignments" || endpoint === "events") return [];
     throw Error("Unexpected API call: " + endpoint);
   },
 };
@@ -44,13 +46,13 @@ async function main() {
   assert.match(root.innerHTML, /1 из 2 глав/);
 
   await ctx.learningPage("catalog");
-  assert.match(root.innerHTML, /Учебные материалы/);
+  assert.match(root.innerHTML, /Программа обучения/);
   assert.match(root.innerHTML, /data-action="study"/);
   assert.match(root.innerHTML, /data-action="open-manager"/);
   assert.match(root.innerHTML, /data-action="nav" data-id="cases"/);
   assert.doesNotMatch(root.innerHTML, /data-action="dish-open"/);
 
-  assert.match(mainCode, /\['home','Мой путь'\],\['catalog','Курсы'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
+  assert.match(mainCode, /\['home','Главная'\],\['catalog','Программа'\],\['cases','Практика'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
   assert.match(mainCode, /\['dashboard','Обзор'\],\['courses','Программы'\],\['team','Команда'\],\['events','Мероприятия'\],\['profile','Профиль'\]/);
   assert.match(mainCode, /managerMode=isManager\(\);view=managerMode\?'dashboard':'home'/);
   assert.match(mainCode, /data-action="nav" data-id="events"/);
@@ -62,9 +64,9 @@ async function main() {
   assert.match(code, /await generateCourseProposal\(cid\)/);
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261026-wine1/);
-  assert.match(html, /pilot\.js\?v=20261026-wine1/);
-  assert.match(html, /dishes\.js\?v=20261024-pdf-ai2/);
+  assert.match(html, /learning\.js\?v=20261026-reference1/);
+  assert.match(html, /pilot\.js\?v=20261026-reference1/);
+  assert.match(html, /dishes\.js\?v=20261026-reference1/);
   assert.match(html, /wine_cards\.js\?v=20261026-1/);
   assert.match(html, /wine_cards\.css\?v=20261026-1/);
   assert.match(mainCode, /Скачать шаблон ТТК/);
@@ -102,6 +104,7 @@ async function main() {
   const navRoot = {innerHTML: "",classList:{toggle(){}},setAttribute(){}};
   const managerRoot = {innerHTML: ""};
   const managerCtx = {
+    document:{body:{classList:{toggle(){}}}},
     console,
     user:{id:999,role:"manager",restaurant:"MOJO",name:"Manager"},
     managerMode:true,view:"dashboard",
