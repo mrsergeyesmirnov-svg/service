@@ -46,6 +46,11 @@ def slide_content(slide):
             if len(data)>6_000_000:continue
             with Image.open(io.BytesIO(data)) as im:
                 if im.width*im.height>15_000_000:continue
+                # Known 1250x703 MOJO station slide screenshots contain TTK tables,
+                # headers and a small food image, not a stand-alone dish photograph.
+                # Reject this exact legacy export size; keep the draft for review.
+                if im.size == (1250, 703):
+                    continue
                 im=im.convert("RGB");im.thumbnail((900,650))
                 buf=io.BytesIO();im.save(buf,"JPEG",quality=80,optimize=True)
                 photos.append((shape.width*shape.height,buf.getvalue()))

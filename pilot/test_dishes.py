@@ -57,6 +57,33 @@ class DishCards(unittest.TestCase):
         self.assertTrue(item["photo"])
         self.assertNotIn("Аллергены не подтверждены",item["warning"])
 
+    def test_legacy_full_station_slide_must_not_be_used_as_food_photo(self):
+        from pptx import Presentation
+        from pptx.util import Inches
+        from pptx_ttk import template_pptx, extract_pptx
+        deck=Presentation(io.BytesIO(template_pptx()))
+        slide=deck.slides[1]
+        for shape in slide.shapes:
+            if not shape.has_text_frame:continue
+            for old,new in [
+                ("[Впишите название]","Уха"),
+                ("[Впишите раздел]","Супы"),
+                ("[Ингредиент 1\\nИнгредиент 2]","Рыбный бульон\\nКартофель"),
+                ("[Впишите описание и подачу]","По утверждённой ТТК"),
+                ("[Перечислите по утверждённой ТТК]","Рыба"),
+                ("[Документ и дата]","ТТК MOJO v1")
+            ]:
+                if old in shape.text:shape.text=shape.text.replace(old,new)
+        picture=io.BytesIO()
+        Image.new("RGB",(1250,703),(230,230,220)).save(picture,"JPEG")
+        slide.shapes.add_picture(io.BytesIO(picture.getvalue()),Inches(7),Inches(1),width=Inches(5.5))
+        out=io.BytesIO();deck.save(out)
+        cards=extract_pptx(out.getvalue())
+        self.assertEqual(len(cards),1)
+        self.assertEqual(cards[0]["title"],"Уха")
+        self.assertIsNone(cards[0]["photo"])
+        self.assertIn("Не найдено фото",cards[0]["warning"])
+
     def test_powerpoint_unknown_allergens_never_claims_no_allergens(self):
         from pptx import Presentation
         from pptx.util import Inches
