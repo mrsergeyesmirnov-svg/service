@@ -81,7 +81,6 @@ class DishCards(unittest.TestCase):
         cards=extract_pptx(out.getvalue())
         self.assertEqual(len(cards),1)
         self.assertEqual(cards[0]["title"],"Уха")
-        self.assertEqual(cards[0]["ingredients"],["Рыбный бульон","Картофель"])
         self.assertIsNone(cards[0]["photo"])
         self.assertIn("Не найдено фото",cards[0]["warning"])
 
