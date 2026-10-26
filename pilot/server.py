@@ -393,6 +393,9 @@ def learning_script():return FileResponse(BASE/'learning.js',media_type='applica
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
 
+@app.get('/pilot/learner.css')
+def learner_styles():return FileResponse(BASE/'learner.css',media_type='text/css')
+
 @app.get('/pilot/wine_cards.js')
 def wine_script():return FileResponse(BASE/'wine_cards.js',media_type='application/javascript')
 @app.get('/pilot/wine_cards.css')
