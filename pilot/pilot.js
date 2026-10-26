@@ -21,8 +21,9 @@ async function api(path,method='GET',body){
   return data;
 }
 const navSvg=(name)=>{
-  name=({home:'assignments',catalog:'courses'})[name]||name;
+  name=({catalog:'courses'})[name]||name;
   const paths={
+    home:'<path d="M3 11 12 3l9 8v10h-6v-7H9v7H3z"/>',
     assignments:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     team:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M19 14a5 5 0 0 1 2 4v2"/>',
     courses:'<path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1m0-14c3-2 6-2 9-1v14c-3-1-6-1-9 1V6Z"/>',
@@ -35,14 +36,15 @@ const navSvg=(name)=>{
 };
 function nav(){
   const m=isManager()&&managerMode;
+  document.body.classList.toggle('learner-ui',!m);
   const tabs=m?(user.role==='manager'
     ?[['dashboard','Обзор'],['courses','Программы'],['team','Команда'],['events','Мероприятия'],['profile','Профиль']]
     :[['dashboard','Команда'],['courses','Обучение'],['events','Мероприятия'],['profile','Профиль']])
-    :[['home','Мой путь'],['catalog','Курсы'],['events','Мероприятия'],['profile','Профиль']];
+    :[['home','Главная'],['catalog','Программа'],['cases','Практика'],['events','Мероприятия'],['profile','Профиль']];
   $('#nav').classList.toggle('manager-nav',m);
   $('#nav').setAttribute('aria-label',m?'Управление Академией':'Разделы обучения');
   $('#nav').innerHTML=tabs.map(([id,label])=>{
-    const active=view===id||(id==='catalog'&&!m&&view==='cases')||(m&&id==='courses'&&['dishes','cases'].includes(view));
+    const active=view===id||(m&&id==='courses'&&['dishes','cases'].includes(view));
     return '<button class="nav-item '+(active?'active':'')+'" data-action="nav" data-id="'+id+'" aria-label="'+label+'" aria-current="'+(active?'page':'false')+'">'+navSvg(id)+'<span>'+label+'</span></button>';
   }).join('');
 }
