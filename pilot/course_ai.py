@@ -159,8 +159,16 @@ def generate_review_drafts(chapters):
         return validate_generated(proposal,chapters)
     except HTTPException:
         raise
-    except (httpx.HTTPError,ValueError,KeyError,IndexError,TypeError,AttributeError):
-        raise HTTPException(502,"ИИ не смог подготовить проверяемые материалы. Попробуй снова или создай тест вручную.")
+    except httpx.TimeoutException:
+        raise HTTPException(504,"Yandex AI не ответил за 45 секунд. Черновик сохранён. Не повторяй запрос много раз подряд.")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise HTTPException(429,"Yandex AI отклонил запрос из-за лимита или нагрузки. Черновик не изменён.")
+        raise HTTPException(502,"Yandex AI отклонил запрос. Проверь настройки модели и её доступность; черновик не изменён.")
+    except httpx.HTTPError:
+        raise HTTPException(502,"Нет соединения с Yandex AI. Материалы сохранены, попробуй после восстановления доступа.")
+    except (ValueError,KeyError,IndexError,TypeError,AttributeError):
+        raise HTTPException(502,"ИИ вернул ответ, не прошедший проверку структуры вопросов и кейсов. Материалы сохранены, вопросов нет.")
 
 
 def suggest_wine_cards(chapters):
