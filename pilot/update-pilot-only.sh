@@ -14,7 +14,10 @@ bash pilot/backup.sh
 OLD_IMAGE="$(docker inspect --format '{{.Image}}' service-academy-api)"
 RELEASE="service-academy-pilot:update-$(date -u +%Y%m%dT%H%M%SZ)"
 docker build -t "$RELEASE" -f pilot/Dockerfile .
-docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot test_wine_cards
+# Release gate must cover the same trainee/manager paths as CI, including
+# service publication, onboarding and staged menu exams. All DB test suites
+# use disposable schemas; production courses and attempts are not altered.
+docker run --rm --network service-academy-net --env-file "$CFG" "$RELEASE" python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_onboarding
 # Additive Academy-only schema change. Apply after backup, before switching the API.
 # No rows or historical scores are deleted.
 # All statements in schema.sql are additive (CREATE IF NOT EXISTS / ALTER ADD IF NOT EXISTS).
