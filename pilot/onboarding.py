@@ -37,7 +37,7 @@ def effective_quests(c, restaurant):
     rows=c.execute("""SELECT quest_key,title,instruction,prompt,requires_review
          FROM onboarding_quests WHERE restaurant=%s""",(restaurant,)).fetchall()
     overrides={r["quest_key"]:r for r in rows}
-    return [dict(**{k:v for k,v in q.items() if k!="review"},
+    return [dict(q,
                  review=overrides[q["key"]]["requires_review"] if q["key"] in overrides else q["review"],
                  title=overrides[q["key"]]["title"] if q["key"] in overrides else q["title"],
                  instruction=overrides[q["key"]]["instruction"] if q["key"] in overrides else q["instruction"],
