@@ -13,11 +13,12 @@ def dish_review_chapters(parts):
         raise HTTPException(422, "Для ИИ создай курс из 1–16 утверждённых карточек блюд")
     result=[]
     for part in parts:
-        if part.get("kind") != "dish" or not part.get("ingredients") or not part.get("description"):
-            raise HTTPException(409, "Сначала проверь составы и описания всех карточек")
+        if part.get("kind") != "dish" or not part.get("ingredients"):
+            raise HTTPException(409, "Сначала проверь составы всех карточек")
         source=part["source"]+(f", стр. {part['source_page']}" if part.get("source_page") else "")
         body=("Раздел меню: "+part["section"]+"\\n"+"Подтверждённый состав: "+
-              ", ".join(part["ingredients"])+"\\n"+"Описание и подача: "+part["description"]+
+              ", ".join(part["ingredients"])+
+              ("\\n"+"Описание и подача: "+part["description"] if part.get("description") else "")+
               ("\\n"+"Аллергены по ТТК: "+part["allergens"] if part.get("allergens") else ""))
         if len(body)>1250:
             raise HTTPException(422, "Слишком длинная карточка «"+part["title"]+"» для проверяемого теста. Сократи описание.")
@@ -159,8 +160,16 @@ def generate_review_drafts(chapters):
         return validate_generated(proposal,chapters)
     except HTTPException:
         raise
-    except (httpx.HTTPError,ValueError,KeyError,IndexError,TypeError,AttributeError):
-        raise HTTPException(502,"ИИ не смог подготовить проверяемые материалы. Попробуй снова или создай тест вручную.")
+    except httpx.TimeoutException:
+        raise HTTPException(504,"Yandex AI не ответил за 45 секунд. Черновик сохранён. Не повторяй запрос много раз подряд.")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise HTTPException(429,"Yandex AI отклонил запрос из-за лимита или нагрузки. Черновик не изменён.")
+        raise HTTPException(502,"Yandex AI отклонил запрос. Проверь настройки модели и её доступность; черновик не изменён.")
+    except httpx.HTTPError:
+        raise HTTPException(502,"Нет соединения с Yandex AI. Материалы сохранены, попробуй после восстановления доступа.")
+    except (ValueError,KeyError,IndexError,TypeError,AttributeError):
+        raise HTTPException(502,"ИИ вернул ответ, не прошедший проверку структуры вопросов и кейсов. Материалы сохранены, вопросов нет.")
 
 
 def suggest_wine_cards(chapters):
