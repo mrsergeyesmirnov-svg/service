@@ -156,7 +156,7 @@ async function onboardingTeamPage(){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем адаптацию…</p>';
  const rows=await api('onboarding/team');
  root.innerHTML=workspaceHeader('Адаптация новичков','Первый день · второй день · основная программа')+
- '<div class="actions">'+btn('Темы диагностики','onboard-manager-topics','','secondary')+
+ '<div class="actions">'+btn('Задания первого дня','onboard-manager-quests','','secondary')+btn('Темы диагностики','onboard-manager-topics','','secondary')+
  btn('К команде','nav','team','secondary')+'</div>'+
  (rows.length?rows.map(s=>'<article class="card onboard-team-row"><div><strong>'+esc(s.name)+'</strong>'+
  '<p class="muted">'+esc(s.restaurant)+' · '+(s.day2_completed_at?'День 2 завершён':s.day1_completed_at?'Второй день':'Первый день')+
@@ -190,6 +190,21 @@ async function onboardingTeamDetail(staffId){
  data.topics.map(t=>'<p>'+esc(t.title)+': '+esc(({know:'знаю',partial:'частично',new:'не знаю'})[t.level]||'самооценки нет')+
  (t.diagnosed?' · '+t.score+'%':' · нет проверки')+'</p>').join('')+'</section>';
 }
+async function onboardingQuestsManagerPage(){
+ const data=await api('onboarding/quests/manage');
+ $('#app').innerHTML=workspaceHeader('Задания первого дня','Редактируй четыре задания MOJO. Ответы сотрудников и их статусы сохраняются.')+
+  '<div class="actions">'+btn('← Адаптация','nav','onboarding-team','secondary')+'</div>'+
+  '<div class="onboard-manager-edit">'+data.quests.map(q=>'<form class="card onboard-quest-edit" data-onboard-form="quest-edit" data-key="'+esc(q.key)+'">'+
+   '<h2>'+esc(q.title)+'</h2>'+
+   '<label>Название задания<input name="title" maxlength="140" required value="'+esc(q.title)+'"></label>'+
+   '<label>Что должен сделать стажёр<textarea name="instruction" maxlength="1200" rows="4" required>'+esc(q.instruction)+'</textarea></label>'+
+   '<label>Вопрос для короткого ответа<input name="prompt" maxlength="220" required value="'+esc(q.prompt)+'"></label>'+
+   '<label class="ob-check"><input type="checkbox" name="review" '+(q.review?'checked':'')+
+     (['allergens','greeting'].includes(q.key)?' disabled':'')+'> Требуется подтверждение менеджера</label>'+
+   (['allergens','greeting'].includes(q.key)?'<p class="muted">Для безопасности и тренировки приветствия подтверждение обязательно.</p>':'')+
+   '<button type="submit" class="lime-action">Сохранить задание</button></form>').join('')+
+  '</div>';
+}
 async function onboardingTopicsPage(){
  const data=await api('onboarding/topics'),root=$('#app');
  const known=new Map(data.mapped.map(x=>[x.topic,x.course_id]));
@@ -220,6 +235,7 @@ document.addEventListener('click',async e=>{
   if(action==='onboard-diagnostic')await onboardingDiagnosticPage(id);
   if(action==='onboard-study')await onboardingStudy(id);
   if(action==='onboard-manager-staff')await onboardingTeamDetail(id);
+  if(action==='onboard-manager-quests')await onboardingQuestsManagerPage();
   if(action==='onboard-manager-topics')await onboardingTopicsPage();
  }catch(err){error(err)}finally{onboardBusy=false}
 });
@@ -266,6 +282,14 @@ document.addEventListener('submit',async e=>{
   if(kind==='deadline'){
    await api('onboarding/team/'+onboardManagerId,'PATCH',{target_date:field.get('target_date')});
    await onboardingTeamDetail(onboardManagerId);
+  }
+  if(kind==='quest-edit'){
+   const critical=['allergens','greeting'].includes(form.dataset.key);
+   const result=await api('onboarding/quests/manage/'+form.dataset.key,'PUT',{
+    title:field.get('title'),instruction:field.get('instruction'),
+    prompt:field.get('prompt'),review:critical||field.has('review')
+   });
+   await onboardingQuestsManagerPage();
   }
   if(kind==='mapping'){
    await api('onboarding/topics/'+form.dataset.topic,'PUT',{
