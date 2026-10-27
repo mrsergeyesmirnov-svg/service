@@ -240,3 +240,68 @@ CREATE TABLE IF NOT EXISTS menu_assessment_attempts (
 );
 CREATE INDEX IF NOT EXISTS menu_assessment_progress
   ON menu_assessment_attempts(staff_id,course_id,signature,stage,passed);
+
+
+-- MOJO onboarding MVP (day 1 -> day 2 -> existing courses).
+-- All changes are additive; existing quiz/attendance scores remain untouched.
+CREATE TABLE IF NOT EXISTS onboarding_tracks (
+ staff_id BIGINT PRIMARY KEY REFERENCES staff(id),
+ restaurant TEXT NOT NULL,
+ started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ day1_completed_at TIMESTAMPTZ,
+ day2_completed_at TIMESTAMPTZ,
+ target_date DATE,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS onboarding_quest_attempts (
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ quest_key TEXT NOT NULL,
+ answer TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('pending','done','revise')),
+ submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ reviewed_by BIGINT REFERENCES staff(id),
+ reviewed_at TIMESTAMPTZ,
+ review_comment TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(staff_id,quest_key)
+);
+CREATE INDEX IF NOT EXISTS onboarding_quests_pending ON onboarding_quest_attempts(status,submitted_at);
+CREATE TABLE IF NOT EXISTS onboarding_feedback (
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ day SMALLINT NOT NULL CHECK(day IN (1,2)),
+ rating SMALLINT NOT NULL CHECK(rating BETWEEN 1 AND 5),
+ clarity SMALLINT NOT NULL CHECK(clarity BETWEEN 1 AND 5),
+ comment TEXT NOT NULL DEFAULT '',
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(staff_id,day)
+);
+CREATE TABLE IF NOT EXISTS onboarding_self_assessments (
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ topic_key TEXT NOT NULL,
+ self_level TEXT NOT NULL CHECK(self_level IN ('know','partial','new')),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(staff_id,topic_key)
+);
+-- Manager maps a diagnostic topic to an already approved, published course.
+CREATE TABLE IF NOT EXISTS onboarding_topic_courses (
+ restaurant TEXT NOT NULL,
+ topic_key TEXT NOT NULL,
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ reviewed_by BIGINT NOT NULL REFERENCES staff(id),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(restaurant,topic_key)
+);
+CREATE TABLE IF NOT EXISTS onboarding_diagnostic_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ topic_key TEXT NOT NULL,
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ request_id UUID NOT NULL,
+ questions JSONB NOT NULL,
+ answers JSONB NOT NULL,
+ score INT NOT NULL CHECK(score BETWEEN 0 AND 100),
+ passed BOOLEAN NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(staff_id,topic_key,request_id)
+);
+CREATE INDEX IF NOT EXISTS onboarding_diagnostics_recent
+ ON onboarding_diagnostic_attempts(staff_id,topic_key,created_at);
