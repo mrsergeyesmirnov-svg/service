@@ -31,6 +31,22 @@ TOPICS = (
 )
 TOPIC_KEYS = {x[0] for x in TOPICS}
 QUEST_BY_KEY = {x["key"]: x for x in QUESTS}
+
+def effective_quests(c, restaurant):
+    """Restaurant-specific manager-approved wording, stable quest keys."""
+    rows=c.execute("""SELECT quest_key,title,instruction,prompt,requires_review
+         FROM onboarding_quests WHERE restaurant=%s""",(restaurant,)).fetchall()
+    overrides={r["quest_key"]:r for r in rows}
+    return [dict(**{k:v for k,v in q.items() if k!="review"},
+                 review=overrides[q["key"]]["requires_review"] if q["key"] in overrides else q["review"],
+                 title=overrides[q["key"]]["title"] if q["key"] in overrides else q["title"],
+                 instruction=overrides[q["key"]]["instruction"] if q["key"] in overrides else q["instruction"],
+                 prompt=overrides[q["key"]]["prompt"] if q["key"] in overrides else q["prompt"])
+            for q in effective_quests(c,staff["restaurant"])]
+
+def effective_quest(c, restaurant, key):
+    return next((q for q in effective_quests(c,restaurant) if q["key"]==key),None)
+
 LEVELS = {"know", "partial", "new"}
 
 
@@ -50,7 +66,8 @@ def track(c, staff, create=True):
     return c.execute("SELECT * FROM onboarding_tracks WHERE staff_id=%s", (staff["id"],)).fetchone()
 
 
-def attempted_quests(c, staff_id):
+def attempted_quests(c, staff):
+    staff_id=staff["id"]
     rows = c.execute("""SELECT quest_key,answer,status,review_comment,submitted_at
         FROM onboarding_quest_attempts WHERE staff_id=%s""", (staff_id,)).fetchall()
     found = {r["quest_key"]: r for r in rows}
@@ -74,7 +91,7 @@ def mapped_topics(c, restaurant):
 
 def collect(c, staff):
     t = track(c,staff)
-    quests = attempted_quests(c,staff["id"])
+    quests = attempted_quests(c,staff)
     levels = {r["topic_key"]:r["self_level"] for r in c.execute(
         "SELECT topic_key,self_level FROM onboarding_self_assessments WHERE staff_id=%s",
         (staff["id"],)).fetchall()}
@@ -131,12 +148,12 @@ def make_onboarding_router(db, require, manager, scope, grade, audit):
 
     @router.post("/quests/{key}/submit")
     async def submit_quest(key: str, request: Request):
-        q=QUEST_BY_KEY.get(key)
-        if not q:raise HTTPException(404, "Задание не найдено")
+        if key not in QUEST_BY_KEY:raise HTTPException(404, "Задание не найдено")
         data=await request.json()
         answer=checked_text(data,"answer")
         with db() as c:
             u=require(c,request);learner(u)
+            q=effective_quest(c,u["restaurant"],key)
             t=track(c,u)
             if t["day1_completed_at"]:
                 raise HTTPException(409,"Первый день уже завершён")
@@ -169,7 +186,7 @@ def make_onboarding_router(db, require, manager, scope, grade, audit):
             u=require(c,request);learner(u)
             t=track(c,u)
             if t["day1_completed_at"]:return {"day1_complete":True,"duplicate":True}
-            if not completed_quests(attempted_quests(c,u["id"])):
+            if not completed_quests(attempted_quests(c,u)):
                 raise HTTPException(409,"Сначала заверши задания, ожидающие проверки менеджера")
             c.execute("""INSERT INTO onboarding_feedback(staff_id,day,rating,clarity,comment)
                 VALUES(%s,1,%s,%s,%s) ON CONFLICT(staff_id,day) DO NOTHING""",
@@ -295,10 +312,50 @@ def make_onboarding_router(db, require, manager, scope, grade, audit):
             return dict(state,staff_id=staff_id,name=staff["name"],restaurant=staff["restaurant"],
                         feedback=feedback)
 
+    @router.get("/quests/manage")
+    def manage_quests(request:Request):
+        with db() as c:
+            u=require(c,request);manager(u)
+            return {"quests":effective_quests(c,u["restaurant"])}
+
+    @router.put("/quests/manage/{key}")
+    async def edit_quest(key:str,request:Request):
+        if key not in QUEST_BY_KEY:raise HTTPException(404,"Задание не найдено")
+        data=await request.json()
+        if not isinstance(data,dict):raise HTTPException(422,"Проверь задание")
+        title=checked_text(data,"title",140)
+        instruction=checked_text(data,"instruction",1200)
+        prompt=checked_text(data,"prompt",220)
+        requested=data.get("review")
+        if type(requested) is not bool:raise HTTPException(422,"Укажи необходимость проверки")
+        if key in ("allergens","greeting") and requested is False:
+            raise HTTPException(422,"Безопасность и тренировку приветствия должен проверять менеджер")
+        with db() as c:
+            u=require(c,request);manager(u)
+            current=effective_quest(c,u["restaurant"],key)
+            if current["review"] != requested:
+                # Changing review policy with active answers may silently complete
+                # or invalidate a pending quest; require new release instead.
+                active=c.execute("""SELECT 1 FROM onboarding_quest_attempts a
+                  JOIN staff s ON s.id=a.staff_id
+                  WHERE s.restaurant=%s AND a.quest_key=%s LIMIT 1""",
+                  (u["restaurant"],key)).fetchone()
+                if active:raise HTTPException(409,"Уже есть ответы сотрудников. Режим проверки менять нельзя.")
+            c.execute("""INSERT INTO onboarding_quests
+                (restaurant,quest_key,title,instruction,prompt,requires_review,updated_by)
+                VALUES(%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT(restaurant,quest_key) DO UPDATE SET
+                  title=EXCLUDED.title,instruction=EXCLUDED.instruction,
+                  prompt=EXCLUDED.prompt,requires_review=EXCLUDED.requires_review,
+                  updated_by=EXCLUDED.updated_by,updated_at=now()""",
+                (u["restaurant"],key,title,instruction,prompt,requested,u["id"]))
+            audit(c,u["id"],"onboarding:quest-edited",key)
+            return {"saved":True,"quest_key":key}
+
     @router.post("/quests/{key}/review")
     async def review_quest(key: str,request: Request):
-        if key not in QUEST_BY_KEY or not QUEST_BY_KEY[key]["review"]:
-            raise HTTPException(404,"Задание не требует подтверждения")
+        if key not in QUEST_BY_KEY:
+            raise HTTPException(404,"Задание не найдено")
         data=await request.json()
         staff_id=data.get("staff_id") if isinstance(data,dict) else None
         decision=data.get("decision") if isinstance(data,dict) else None
@@ -310,6 +367,8 @@ def make_onboarding_router(db, require, manager, scope, grade, audit):
             staff=c.execute("SELECT id,restaurant FROM staff WHERE id=%s AND active AND role='trainee'",(staff_id,)).fetchone()
             if not staff:raise HTTPException(404,"Стажёр не найден")
             scope(u,staff["restaurant"])
+            if not effective_quest(c,staff["restaurant"],key)["review"]:
+                raise HTTPException(409,"Задание не требует подтверждения")
             row=c.execute("""SELECT status FROM onboarding_quest_attempts
                 WHERE staff_id=%s AND quest_key=%s FOR UPDATE""",(staff_id,key)).fetchone()
             if not row:raise HTTPException(404,"Ответ не отправлен")
