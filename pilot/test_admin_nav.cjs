@@ -65,7 +65,7 @@ async function main() {
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
   assert.match(html, /learning\.js\?v=20261027-composition2/);
-  assert.match(html, /pilot\.js\?v=20261027-ai-batches2/);
+  assert.match(html, /pilot\.js\?v=20261027-ai-repair1/);
   assert.match(html, /dishes\.js\?v=20261027-nav1/);
   assert.match(html, /wine_cards\.js\?v=20261026-1/);
   assert.match(html, /menu_assessments\.js\?v=20261027-stages1/);
