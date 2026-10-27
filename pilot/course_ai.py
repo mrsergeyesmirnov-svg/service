@@ -13,8 +13,8 @@ def dish_review_chapters(parts):
         raise HTTPException(422, "Для ИИ создай курс из 1–16 утверждённых карточек блюд")
     result=[]
     for part in parts:
-        if part.get("kind") != "dish" or not part.get("ingredients") or not part.get("description"):
-            raise HTTPException(409, "Сначала проверь составы и описания всех карточек")
+        if part.get("kind") != "dish" or not part.get("ingredients"):
+            raise HTTPException(409, "Сначала проверь составы всех карточек")
         source=part["source"]+(f", стр. {part['source_page']}" if part.get("source_page") else "")
         body=("Раздел меню: "+part["section"]+"\\n"+"Подтверждённый состав: "+
               ", ".join(part["ingredients"])+"\\n"+"Описание и подача: "+part["description"]+
