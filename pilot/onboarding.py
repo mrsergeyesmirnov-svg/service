@@ -42,7 +42,7 @@ def effective_quests(c, restaurant):
                  title=overrides[q["key"]]["title"] if q["key"] in overrides else q["title"],
                  instruction=overrides[q["key"]]["instruction"] if q["key"] in overrides else q["instruction"],
                  prompt=overrides[q["key"]]["prompt"] if q["key"] in overrides else q["prompt"])
-            for q in effective_quests(c,staff["restaurant"])]
+            for q in QUESTS]
 
 def effective_quest(c, restaurant, key):
     return next((q for q in effective_quests(c,restaurant) if q["key"]==key),None)
@@ -74,7 +74,7 @@ def attempted_quests(c, staff):
     return [dict(**q, status=found[q["key"]]["status"] if q["key"] in found else "todo",
                  answer=found[q["key"]]["answer"] if q["key"] in found else "",
                  review_comment=found[q["key"]]["review_comment"] if q["key"] in found else "")
-            for q in QUESTS]
+            for q in effective_quests(c,staff["restaurant"])]
 
 
 def completed_quests(quests):
