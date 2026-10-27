@@ -51,6 +51,7 @@ jobs:
           (cd pilot && node test_dish_nav.cjs)
           (cd pilot && node test_mobile_scroll.cjs)
           (cd pilot && node test_lesson_tabs.cjs)
+          (cd pilot && node test_acceptance_completion.cjs)
           node --check pilot/voice.js
           bash -n pilot/update-pilot-only.sh
           bash -n pilot/enable-dish-upload.sh
