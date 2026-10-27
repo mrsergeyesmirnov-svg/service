@@ -294,6 +294,100 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             return {'title':row['title'],'source':row['source'],
                     'chapters':saved['chapters'] if saved else []}
 
+    @router.post('/{cid}/service-package')
+    async def import_service_package(cid: int, request: Request):
+        """Attach manager-reviewable service chapters, questions and cases to an EXISTING draft.
+
+        Import is transactional and never publishes or assigns anything.
+        Case rubrics remain hidden until a separate managerial publication.
+        """
+        from questions import clean_question
+        from cases_api import case_payload
+
+        payload = await request.json()
+        if not isinstance(payload, dict) or payload.get('format') != 'mojo-service-pilot-v1':
+            raise HTTPException(422, 'Неверный формат пакета программы сервиса')
+        outline = validate_text_chapters(payload.get('chapters'))
+        raw_questions = payload.get('questions')
+        raw_cases = payload.get('cases', [])
+        if not outline or not isinstance(raw_questions, list) or not 3 <= len(raw_questions) <= 100:
+            raise HTTPException(422, 'Нужны главы и от 3 до 100 проверяемых вопросов')
+        if not isinstance(raw_cases, list) or len(raw_cases) > 15:
+            raise HTTPException(422, 'Допускается до 15 черновиков практических кейсов')
+
+        def text_field(item, field, limit=200):
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip() or len(value) > limit:
+                raise HTTPException(422, 'Проверь поле вопроса: ' + field)
+            return value.strip()
+
+        questions = []
+        for item in raw_questions:
+            if not isinstance(item, dict):
+                raise HTTPException(422, 'Некорректная структура вопроса')
+            questions.append(clean_question(item, text_field))
+        cases = [case_payload(item) for item in raw_cases]
+        if len({(q['type'], q['question'].casefold()) for q in questions}) != len(questions):
+            raise HTTPException(422, 'В пакете повторяются вопросы')
+        if len({x['title'].casefold() for x in cases}) != len(cases):
+            raise HTTPException(422, 'В пакете повторяются практические кейсы')
+
+        source = payload.get('source')
+        if not isinstance(source, str) or not 1 <= len(source.strip()) <= 2000:
+            raise HTTPException(422, 'Укажи источник и версию сервисбука')
+        pass_score = payload.get('pass_score', 80)
+        if type(pass_score) is not int or not 1 <= pass_score <= 100:
+            raise HTTPException(422, 'Проверь проходной балл')
+        replace = payload.get('replace') is True
+        with db() as c:
+            user = require(c, request)
+            manager(user)
+            course = c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE', (cid,)).fetchone()
+            if not course:
+                raise HTTPException(404, 'Черновик курса не найден')
+            scope(user, course['restaurant'])
+            if course['published'] or course['archived']:
+                raise HTTPException(409, 'Для опубликованной или архивной программы создай новую версию')
+            if course['kind'] != 'service' or category(course['title']) != 'service':
+                raise HTTPException(409, 'Пакет сервиса можно загрузить только в черновик курса по сервису')
+            if c.execute('SELECT 1 FROM course_dishes WHERE course_id=%s LIMIT 1', (cid,)).fetchone():
+                raise HTTPException(409, 'В этом курсе уже есть карточки меню; их нельзя смешивать с сервисбуком')
+
+            saved = c.execute('SELECT chapters FROM course_text_outline WHERE course_id=%s', (cid,)).fetchone()
+            already_equal = (bool(saved) and saved['chapters'] == outline and
+                             course['questions'] == questions and course['source'] == source and
+                             course['pass_score'] == pass_score)
+            if already_equal:
+                return {'status': 'draft', 'duplicate': True, 'chapters': len(outline),
+                        'questions': len(questions), 'cases_created': 0, 'published': False}
+
+            if (saved or course['questions']) and not replace:
+                raise HTTPException(409, 'В черновике уже есть главы или вопросы. Подтверди замену перед импортом.')
+            if replace and c.execute('SELECT 1 FROM learning_attempts WHERE course_id=%s LIMIT 1', (cid,)).fetchone():
+                raise HTTPException(409, 'По этой версии есть результаты обучения. Создай новую версию вместо замены.')
+            c.execute("""INSERT INTO course_text_outline(course_id,chapters) VALUES(%s,%s)
+                ON CONFLICT(course_id) DO UPDATE SET chapters=EXCLUDED.chapters,updated_at=now()""",
+                      (cid, Jsonb(outline)))
+            c.execute("""UPDATE courses SET source=%s,questions=%s,pass_score=%s,
+                reviewed_dish_signature=NULL WHERE id=%s""",
+                      (source, Jsonb(questions), pass_score, cid))
+            created = 0
+            for item in cases:
+                duplicate = c.execute("""SELECT id FROM case_scenarios WHERE restaurant=%s
+                    AND title=%s AND source=%s AND scenario=%s LIMIT 1""",
+                    (course['restaurant'], item['title'], item['source'], item['scenario'])).fetchone()
+                if duplicate:
+                    continue
+                c.execute("""INSERT INTO case_scenarios(
+                    author,restaurant,title,competency,action,scenario,source,criteria)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (user['id'], course['restaurant'], item['title'], item['competency'],
+                     item['action'], item['scenario'], item['source'], Jsonb(item['criteria'])))
+                created += 1
+            audit(c, user['id'], 'service:package-draft-import', cid)
+            return {'status': 'draft', 'duplicate': False, 'chapters': len(outline),
+                    'questions': len(questions), 'cases_created': created, 'published': False}
+
     @router.put('/{cid}/text-chapters')
     async def put_text_chapters(cid:int,request:Request):
         d=await request.json()
