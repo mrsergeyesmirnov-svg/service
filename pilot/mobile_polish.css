@@ -96,10 +96,9 @@ button.lime-action,
 input,textarea,select{
   border-color:#d6e1d5;
   background:#fff;
-  -webkit-appearance:none;
-  appearance:none;
 }
-input[type=checkbox],input[type=radio]{-webkit-appearance:auto;appearance:auto}
+/* Preserve the native iPhone picker and the dropdown indicator. */
+select{appearance:auto;-webkit-appearance:menulist;}
 input:focus,textarea:focus,select:focus{
   border-color:#8aa478;
 }
