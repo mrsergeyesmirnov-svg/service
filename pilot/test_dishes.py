@@ -316,6 +316,34 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(self.client.delete(f"/api/dishes/{cid}",headers=self.headers(10)).status_code,200)
         self.assertEqual(self.client.get("/api/dishes",headers=self.headers(11)).json(),[])
 
+    def test_description_is_optional_but_ingredients_photo_and_review_are_required(self):
+        from psycopg.types.json import Jsonb
+        with self.connect() as c:
+            rows=[]
+            for name,ingredients,photo in [
+                ("Without description", ["Rice", "Nori"], b"approved-photo"),
+                ("Without ingredients", [], b"photo"),
+                ("Without photo", ["Rice"], None),
+            ]:
+                row=c.execute("""INSERT INTO dish_cards
+                    (restaurant,created_by,title,section,ingredients,description,photo,import_method)
+                    VALUES ('MOJO',10,%s,'Menu',%s,'',%s,'legacy') RETURNING id""",
+                    (name,Jsonb(ingredients),photo)).fetchone()
+                rows.append(row["id"])
+        endpoint=lambda id:f"/api/dishes/{id}/publish"
+        self.assertEqual(self.client.post(endpoint(rows[0]),headers=self.headers(10),
+                         json={"reviewed":False}).status_code,422)
+        approved=self.client.post(endpoint(rows[0]),headers=self.headers(10),
+                                  json={"reviewed":True})
+        self.assertEqual(approved.status_code,200,approved.text)
+        for id in rows[1:]:
+            self.assertEqual(self.client.post(endpoint(id),headers=self.headers(10),
+                              json={"reviewed":True}).status_code,409)
+        with self.connect() as c:
+            result=c.execute("SELECT description,published FROM dish_cards WHERE id=%s",
+                             (rows[0],)).fetchone()
+            self.assertEqual(result,{"description":"","published":True})
+
     def test_ai_practice_failure_retry_is_idempotent(self):
         import uuid
         from unittest.mock import patch
