@@ -125,9 +125,6 @@ class FinalIntegration(unittest.TestCase):
         self.assertFalse(self.client.get(url+"/status",headers=b).json()["ready"])
         # No correct ingredients in pre-submit payload.
         self.assertNotIn("ingredients",ready["questions"][0])
-        full_answers=["\n".join(["Рис","Нори",q["question"].split("Соус ") and
-                         "Соус "+q["question"].split("Соус ")[-1]])
-                      for q in []]  # Build expected answers from the verified DB source below.
         with self.connect() as c:
             from menu_final import select_questions
             from dish_lessons import dish_chapters
