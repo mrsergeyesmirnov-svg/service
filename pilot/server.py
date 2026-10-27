@@ -17,6 +17,7 @@ from events import make_events_router
 from wine_cards import make_router as make_wine_cards_router
 from menu_cards import make_router as make_menu_cards_router
 from menu_assessments import make_router as make_menu_assessments_router
+from menu_assessments import menu_exam_questions
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -247,6 +248,47 @@ async def edit_course(cid:int,request:Request):
         c.execute('UPDATE courses SET title=%s,kind=%s,body=%s,source=%s,questions=%s,pass_score=%s WHERE id=%s',(title,kind,body,source,Jsonb(qs),score,cid));audit(c,u['id'],'course:edit',cid)
     return {'ok':True}
 
+def publication_status(c,row):
+    """Single server-side source of truth for manager UI and actual publishing."""
+    mapped=map_details(c,row['id'])
+    problems=[]
+    use_stages=bool(mapped and not row['questions'])
+    signature=row['reviewed_dish_signature']
+    if row['archived']:
+        problems.append('Курс в архиве: создай новую версию')
+    if not mapped and row['kind']!='notice' and not row['questions']:
+        problems.append('Нет вопросов и утверждённых карточек блюд. Привяжи опубликованные карточки или добавь тест')
+    if mapped:
+        chapters=dish_chapters(c,row['id'],row['restaurant'])
+        if len(chapters or [])!=len(mapped):
+            problems.append('Некоторые карточки ещё не утверждены или сняты с публикации')
+        else:
+            current=reviewed_dish_signature(chapters)
+            if signature and current!=signature:
+                problems.append('Рецептуры изменились после проверки теста; необходима новая версия')
+            if use_stages:
+                try:
+                    # Explicitly ensure every approved dish can be examined.
+                    menu_exam_questions(chapters,'control',row['id'])
+                except HTTPException as exc:
+                    problems.append(str(exc.detail))
+    return {'ready':not problems,'blockers':problems,
+            'mode':'staged-menu' if use_stages else 'existing-quiz',
+            'mapped_dishes':len(mapped),
+            'questions':len(row['questions'] or []),
+            'cases_required':False}
+
+
+@app.get('/api/courses/{cid}/publication-check')
+def publication_check(cid:int,request:Request):
+    with db() as c:
+        u=require(c,request);manager(u)
+        row=c.execute('SELECT * FROM courses WHERE id=%s',(cid,)).fetchone()
+        if not row:raise HTTPException(404,'Курс не найден')
+        scope(u,row['restaurant'])
+        return publication_status(c,row)
+
+
 @app.post('/api/courses/{cid}/publish')
 async def publish(cid:int,request:Request):
     d=await request.json()
@@ -256,9 +298,9 @@ async def publish(cid:int,request:Request):
         row=c.execute('SELECT * FROM courses WHERE id=%s FOR UPDATE',(cid,)).fetchone()
         if not row: raise HTTPException(404)
         scope(u,row['restaurant'])
-        if row['archived']: raise HTTPException(409,'Нельзя опубликовать архивную версию. Создайте копию.')
-        if row['kind'] != 'notice' and not row['questions']:
-            raise HTTPException(409,'Сначала добавь и проверь вопросы теста. Для курса только на чтение выбери тип «Ознакомление».')
+        checked=publication_status(c,row)
+        if not checked['ready']:
+            raise HTTPException(409,'; '.join(checked['blockers']))
         dish_ids=map_details(c,cid)
         signature=row['reviewed_dish_signature']
         if dish_ids and not row['published']:
