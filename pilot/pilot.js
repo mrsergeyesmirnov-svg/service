@@ -132,7 +132,7 @@ async function programsPage(){
         btn('Редактировать','edit',c.id,'lime-action')+btn('Проверить и опубликовать','publish',c.id,'secondary')+btn('В архив','archive-course',c.id,'secondary');
     if(!c.published&&!c.archived&&c.kind==='service'&&/(сервис|smile|гостеприим)/i.test(c.title))
       primary+=btn('Загрузить программу сервиса','service-package',c.id,'secondary');
-    const extras=(!c.published&&!c.archived&&!c.questions.length?btn('Предложить тесты и кейсы (ИИ)','ai-generate',c.id,'secondary'):'')+
+    const extras=(!c.published&&!c.archived&&!c.questions.length?btn('Составить вопросы по одному (ИИ)','ai-generate',c.id,'secondary'):'')+
       btn('Предпросмотр','preview',c.id,'secondary')+
       (!c.archived?btn('Собрать главы из карточек','course-map',c.id,'secondary')+btn('Редактор текстовых глав','course-text-editor',c.id,'secondary')+btn('Карточки вина','wine-editor',c.id,'secondary'):'')+
       (c.archived?'':c.published?btn('Создать новую версию','copy',c.id,'secondary')+btn('Архивировать курс','archive-course',c.id,'secondary'):'');
@@ -429,16 +429,17 @@ function coursePdfPanel(){
 async function generateCourseProposal(cid){
   $('#app').innerHTML='<h1>ИИ готовит программу</h1>'+
     '<section class="card"><h2>Материал сохранён</h2>'+
-    '<p role="status">Большой курс обрабатывается пакетами до 16 глав, но остаётся одним черновиком. Перед публикацией менеджер проверит каждый вопрос.</p>'+
+    '<p role="status">ИИ создаёт и проверяет вопросы по одному. Если один не получится, удачные вопросы останутся в черновике. Кейсы формируются отдельно и не мешают тесту.</p>'+
     btn('Вернуться к программам','nav','courses','secondary')+'</section>';
   try{
-    const result=await api('learning/'+cid+'/generate','POST',{},140000);
+    const result=await api('learning/'+cid+'/generate','POST',{},210000);
     cache=await api('courses');
     $('#app').innerHTML='<h1>Предложения готовы</h1><section class="card">'+
       '<p class="eyebrow">ЕЩЁ НЕ ОПУБЛИКОВАНО</p>'+
       '<h2>'+result.questions+' вопросов и '+result.cases+' практических кейсов</h2>'+
-      (result.cases===0?'<p class="muted">Вопросы готовы, но проверяемые кейсы ИИ не составил. Их можно добавить вручную; тест от этого не теряется.</p>':'')+
-      '<p class="muted">Глав обработано: '+result.chapters+'. Пакетов: '+result.batches+'.</p>'+
+      (result.cases===0?'<p class="muted">Кейсы можно добавить отдельно. Отсутствие кейса не блокирует вопросы.</p>':'')+
+      (result.skipped_questions>0?'<p class="muted">Не все вопросы прошли проверку формата. Сохранены только корректные; недостающие можно добавить вручную.</p>':'')+
+      '<p class="muted">Создано '+result.questions+' из '+result.planned_questions+' запланированных вопросов. Учебных глав: '+result.chapters+'.</p>'+
       '<p>Проверь вопросы, варианты, факты, источники и критерии кейсов. ИИ может ошибаться. Сотрудники ничего не увидят до утверждения.</p>'+
       (result.warnings?.length?'<p class="muted">Автопроверка: '+result.warnings.length+' предупреждений. Исправь их в редакторе.</p>':'')+
       '<div class="actions">'+btn('Проверить тест','edit',cid,'lime-action')+
@@ -487,7 +488,7 @@ function bindCoursePdfImport(){
     '<p>Глав: '+result.chapters+'. Материал сохранён как черновик — сотрудники его пока не увидят.</p>'+
     '<p>Материал готов к проверке. ИИ предложит тест и кейсы; перед публикацией проверь их на соответствие исходному PDF.</p>'+
     '<div class="actions">'+btn('Проверить и отредактировать главы','course-text-editor',result.id,'lime-action')+
-    btn('Предложить тест и кейсы (ИИ)','ai-generate',result.id,'secondary')+
+    btn('Составить вопросы по одному (ИИ)','ai-generate',result.id,'secondary')+
     btn('Вернуться к управлению','nav','courses','secondary')+'</div></section>';
    window.scrollTo(0,0);
    if(!result.duplicate)await generateCourseProposal(result.id);

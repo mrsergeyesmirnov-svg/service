@@ -96,6 +96,26 @@ class StageIntegration(unittest.TestCase):
         self.assertEqual(r.status_code,200,r.text)
         return {"Authorization":"Bearer "+r.json()["token"]}
 
+    def test_ai_practice_questions_never_disable_required_control_exam(self):
+        manager=self.auth(999)
+        trainee=self.auth(101)
+        practice={"type":"single","question":"Что сделать при неизвестном составе?",
+                  "options":["Уточнить у кухни","Угадать","Промолчать"],
+                  "correct":0,"explanation":"Только по ТТК","source":"MOJO ТТК"}
+        with self.connect() as c:
+            c.execute("UPDATE courses SET questions=%s WHERE id=%s",
+                     (Jsonb([practice]),self.cid))
+        check=self.client.get(f"/api/courses/{self.cid}/publication-check",headers=manager)
+        self.assertEqual(check.status_code,200,check.text)
+        self.assertEqual(check.json()["mode"],"staged-menu")
+        summary=next(x for x in self.client.get("/api/learning",headers=trainee).json()
+                     if x["id"]==self.cid)
+        self.assertTrue(summary["staged_menu"])
+        self.assertFalse(summary["control_passed"])
+        detail=self.client.get(f"/api/learning/{self.cid}",headers=trainee).json()
+        self.assertTrue(detail["staged_menu"])
+        self.assertEqual(len(detail["questions"]),1)
+
     def test_gates_scoped_answers_retries_and_snapshot(self):
         trainee=self.auth(101);coworker=self.auth(102);foreign=self.auth(103)
         path=f"/api/menu-assessments/{self.cid}"
