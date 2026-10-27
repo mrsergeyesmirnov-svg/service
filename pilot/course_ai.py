@@ -17,7 +17,8 @@ def dish_review_chapters(parts):
             raise HTTPException(409, "Сначала проверь составы всех карточек")
         source=part["source"]+(f", стр. {part['source_page']}" if part.get("source_page") else "")
         body=("Раздел меню: "+part["section"]+"\\n"+"Подтверждённый состав: "+
-              ", ".join(part["ingredients"])+"\\n"+"Описание и подача: "+part["description"]+
+              ", ".join(part["ingredients"])+
+              ("\\n"+"Описание и подача: "+part["description"] if part.get("description") else "")+
               ("\\n"+"Аллергены по ТТК: "+part["allergens"] if part.get("allergens") else ""))
         if len(body)>1250:
             raise HTTPException(422, "Слишком длинная карточка «"+part["title"]+"» для проверяемого теста. Сократи описание.")
