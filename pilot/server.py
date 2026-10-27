@@ -439,6 +439,9 @@ def learning_script():return FileResponse(BASE/'learning.js',media_type='applica
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
 
+@app.get('/pilot/mobile_polish.css')
+def mobile_polish_styles():return FileResponse(BASE/'mobile_polish.css',media_type='text/css')
+
 @app.get('/pilot/learner.css')
 def learner_styles():return FileResponse(BASE/'learner.css',media_type='text/css')
 

@@ -2,19 +2,61 @@
 let dishCards=[],dishFilter="",dishPageIndex=0,dishImageUrls=new Map();
 const dishAdmin=()=>["manager","local"].includes(user?.role);
 function dishPhoto(id,cls=""){return '<div class="dish-photo '+cls+'" data-dish-picture="'+id+'"><span>Фото блюда</span></div>'}
-async function showDishPhotos(){
- for(const node of document.querySelectorAll("[data-dish-picture]")){
-  const id=Number(node.dataset.dishPicture);
-  if(!learningCourses.some(c=>c.cover_dish_id===id) && !dishCards.find(x=>x.id===id)?.has_photo && !activeCourse?.chapters?.some(c=>c.dish_id===id&&c.has_photo))continue;
-  if(!dishImageUrls.has(id)){
-   try{
-    const r=await fetch("/api/dishes/"+id+"/photo",{headers:{Authorization:"Bearer "+token}});
-    if(!r.ok)continue;
-    dishImageUrls.set(id,URL.createObjectURL(await r.blob()));
-   }catch(e){continue}
+// Load photographs only when their cards approach the viewport. Never block
+// scrolling on a chain of 24 authenticated network requests.
+const dishPhotoRequests = new Map();
+let dishPhotoObserver = null;
+function dishHasPhoto(id){
+ return learningCourses.some(c=>c.cover_dish_id===id) ||
+   !!dishCards.find(c=>c.id===id)?.has_photo ||
+   !!activeCourse?.chapters?.some(c=>c.dish_id===id&&c.has_photo);
+}
+async function loadDishPhoto(node){
+ const id=Number(node.dataset.dishPicture);
+ if(!Number.isInteger(id)||id<1||node.dataset.photoReady==="true"||!dishHasPhoto(id))return;
+ let url=dishImageUrls.get(id);
+ if(!url){
+  let request=dishPhotoRequests.get(id);
+  if(!request){
+   request=(async()=>{
+    const response=await fetch("/api/dishes/"+id+"/photo",{
+     headers:{Authorization:"Bearer "+token}
+    });
+    if(!response.ok)return null;
+    const objectUrl=URL.createObjectURL(await response.blob());
+    dishImageUrls.set(id,objectUrl);
+    return objectUrl;
+   })();
+   dishPhotoRequests.set(id,request);
+   request.finally(()=>dishPhotoRequests.delete(id)).catch(()=>{});
   }
-  node.innerHTML='<img alt="Фото блюда" loading="lazy" src="'+dishImageUrls.get(id)+'">';
+  try{url=await request}catch(e){return}
  }
+ if(!url||!node.isConnected||Number(node.dataset.dishPicture)!==id)return;
+ const image=document.createElement("img");
+ image.alt="Фото блюда";
+ image.loading="lazy";
+ image.decoding="async";
+ image.src=url;
+ node.replaceChildren(image);
+ node.dataset.photoReady="true";
+}
+async function showDishPhotos(){
+ const nodes=[...document.querySelectorAll("[data-dish-picture]:not([data-photo-ready])")];
+ if(!nodes.length)return;
+ if(typeof IntersectionObserver!=="undefined"){
+  if(!dishPhotoObserver)dishPhotoObserver=new IntersectionObserver(entries=>{
+   for(const entry of entries){
+    if(!entry.isIntersecting)continue;
+    dishPhotoObserver.unobserve(entry.target);
+    void loadDishPhoto(entry.target);
+   }
+  },{rootMargin:"320px 0px"});
+  for(const node of nodes)dishPhotoObserver.observe(node);
+  return;
+ }
+ // Older WebViews get a safe fallback. Only the modern lazy path is used on iPhone.
+ await Promise.all(nodes.filter(n=>dishHasPhoto(Number(n.dataset.dishPicture))).map(loadDishPhoto));
 }
 function dishListMarkup(){
  const query=dishFilter.toLocaleLowerCase("ru");
