@@ -132,6 +132,7 @@ async function programsPage(){
     '<details class="card manager-create"><summary><strong>+ Создать материал</strong><span>PDF или вручную</span></summary>'+
       '<p class="muted">Загрузи учебный PDF — из него появится редактируемый черновик курса.</p>'+coursePdfPanel()+
       '<div class="actions">'+btn('Скачать шаблон ТТК','dish-template','','secondary')+btn('Загрузить заполненный шаблон','dish-open','','lime-action')+btn('Собрать курс из карточек блюд','dish-course-new','','secondary')+btn('Создать вручную','new','','secondary')+'</div></details>'+
+    '<div class="actions">'+btn('Настроить финальный экзамен','menu-final-config','','secondary')+'</div>'+ 
     '<div class="manager-tools"><button data-action="dish-open" class="manager-tool"><strong>Карточки блюд · управление →</strong><small>Фото, составы и PDF станционок</small></button>'+
       '<button data-action="manager-cases" class="manager-tool"><strong>Практические кейсы →</strong><small>Тренировки и разборы ИИ</small></button></div>'+
     '<div class="row manager-section-title"><h2>Материалы</h2><span class="badge">'+active.length+'</span></div>'+
