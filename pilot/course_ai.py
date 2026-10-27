@@ -255,7 +255,7 @@ def _generate_one_batch(chapters):
     seen=set()
     # A maximum of two replacement questions can rescue an undersized batch.
     for variant,i in enumerate(indexes+indexes[:2]):
-        if variant>=n and len(questions)>=3:
+        if variant>=n and len(questions)>=n:
             break
         try:
             question=_one_question(chapters[i],variant)
@@ -298,11 +298,11 @@ def generate_review_drafts(chapters):
     batches = [chapters[i:i + AI_CHAPTERS_PER_BATCH]
                for i in range(0, len(chapters), AI_CHAPTERS_PER_BATCH)]
     if len(batches) == 1:
-        return _generate_one_batch(batches[0])
-    # Bound concurrent paid model calls and wait for the complete result before
-    # committing questions and case drafts in the calling API transaction.
-    with ThreadPoolExecutor(max_workers=min(MAX_AI_BATCH_WORKERS, len(batches))) as pool:
-        prepared = list(pool.map(_generate_one_batch, batches))
+        prepared=[_generate_one_batch(batches[0])]
+    else:
+        # Only three concurrent Yandex workers, to limit request costs.
+        with ThreadPoolExecutor(max_workers=min(MAX_AI_BATCH_WORKERS,len(batches))) as pool:
+            prepared=list(pool.map(_generate_one_batch,batches))
     questions = [q for batch_questions, _ in prepared for q in batch_questions]
     cases = [case for _, batch_cases in prepared for case in batch_cases]
     if not 3 <= len(questions) <= 100:
