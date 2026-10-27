@@ -200,7 +200,7 @@ async function publishReviewScreen(c){
     '<p>'+esc(q.explanation)+'</p><p class="muted">Источник: '+esc(q.source)+'</p></details>').join('');
   $('#app').innerHTML=workspaceHeader('Проверка перед публикацией','Убедись, что составы, формулировки и правильные ответы соответствуют материалам MOJO.')+
     qualityNotice(c)+material+'<h2>Вопросы: '+c.questions.length+'</h2>'+
-    (review||'<div class="card">Тест пока не создан. Сначала получи предложения ИИ и проверь их.</div>')+
+    (review||(publication.mode==='staged-menu'?'<div class="card">Отдельный ИИ-тест не требуется: промежуточная и контрольная проверки автоматически строятся из утверждённых составов после публикации.</div>':'<div class="card">Тест пока не создан. Добавь вопросы или привяжи утверждённые карточки блюд.</div>'))+
     (ready&&publication.ready?'<section class="card"><p>'+
       (publication.mode==='staged-menu'?'Проверено: '+publication.mapped_dishes+' блюд. Промежуточный тест и контроль каждого состава доступны без ИИ после публикации курса.':'Тест содержит '+publication.questions+' проверенных вопросов.')+
       ' Практические кейсы публикуются отдельно и не блокируют этот курс.</p>'+
