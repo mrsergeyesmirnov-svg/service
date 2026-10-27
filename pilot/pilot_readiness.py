@@ -14,6 +14,7 @@ def evaluate(s):
     checks = [
         ("Telegram подключён", bool(s["telegram_configured"])),
         ("Есть активный менеджер", s["managers"] >= 1),
+        ("Базовый курс сервиса опубликован с проверяемым тестом", s.get("service_ready", 0) >= 1),
         ("WOW опубликован", s["wow"] >= 1),
         ("SMILE опубликован", s["smile"] >= 1),
         ("Есть курс меню из утверждённых карточек", s["mapped_menu"] >= 1),
@@ -28,9 +29,20 @@ def evaluate(s):
 def counts():
     with db() as c:
         courses = c.execute(
-            "SELECT id,title,kind,questions,restaurant,reviewed_dish_signature FROM courses "
+            "SELECT id,title,kind,body,questions,restaurant,reviewed_dish_signature FROM courses "
             "WHERE published AND NOT archived"
         ).fetchall()
+        approved_outlines = {item['course_id'] for item in c.execute(
+            "SELECT course_id FROM course_text_outline WHERE jsonb_array_length(chapters)>0"
+        ).fetchall()}
+        service_ready = sum(
+            row['kind'] == 'service' and
+            any(word in row['title'].casefold() for word in
+                ('сервис', 'обслуживан', 'service book', 'servicebook')) and
+            len(row['questions'] or []) >= 3 and
+            (row['id'] in approved_outlines or len(row['body'] or '') >= 120)
+            for row in courses
+        )
         mapped = {
             row["course_id"] for row in c.execute(
                 "SELECT DISTINCT course_id FROM course_dishes"
@@ -59,6 +71,7 @@ def counts():
         "pending": sum(r["n"] for r in people if not r["active"]),
         "active_staff": sum(r["n"] for r in people if r["active"]),
         "courses": len(courses),
+        "service_ready": service_ready,
         "wow": sum("WOW" in r["title"].upper() or "ВАУ" in r["title"].upper() for r in courses),
         "smile": sum("SMILE" in r["title"].upper() for r in courses),
         "mapped_menu": sum(r["id"] in mapped and
@@ -81,6 +94,7 @@ if __name__ == "__main__":
         raise SystemExit(2)
     checks = evaluate(snapshot)
     print("MOJO — проверка готовности пилота (без персональных данных)")
+    print(f"Базовых проверяемых курсов сервиса: {snapshot['service_ready']}")
     print(f"Курсов: {snapshot['courses']} · карточек: {snapshot['cards']} · "
           f"кейсов: {snapshot['cases']} · активных аккаунтов: {snapshot['active_staff']}")
     print(f"Заявок на подтверждение: {snapshot['pending']} · "

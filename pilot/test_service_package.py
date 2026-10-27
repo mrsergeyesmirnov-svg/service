@@ -142,6 +142,40 @@ class ServicePackageIntegration(unittest.TestCase):
         self.assertEqual(len(detail["chapters"]),2)
         self.assertEqual(len(detail["questions"]),3)
         self.assertNotIn("correct",detail["questions"][0])
+        # Full pilot acceptance: manager assigns -> trainee studies -> quiz -> manager sees result.
+        from datetime import date,timedelta
+        deadline=(date.today()+timedelta(days=3)).isoformat()
+        assignment=self.client.post("/api/assignments",headers=m,json={
+            "course_id":self.cid,"staff_ids":[11],"deadline":deadline,"max_attempts":2})
+        self.assertEqual(assignment.status_code,200,assignment.text)
+        self.assertEqual(len(assignment.json()["created"]),1)
+        aid=assignment.json()["created"][0]
+        trainee=self.headers(11)
+        early=self.client.post("/api/assignments/"+str(aid)+"/submit",headers=trainee,
+              json={"request_id":str(uuid.uuid4()),"answers":[0,[0,1],0]})
+        self.assertEqual(early.status_code,409,early.text)
+        for chapter in detail["chapters"]:
+            read=self.client.post("/api/learning/"+str(self.cid)+"/read",headers=trainee,
+                                  json={"chapter_id":chapter["id"]})
+            self.assertEqual(read.status_code,200,read.text)
+        acknowledged=self.client.post("/api/assignments/"+str(aid)+"/acknowledge",
+                                      headers=trainee)
+        self.assertEqual(acknowledged.status_code,200,acknowledged.text)
+        rid=str(uuid.uuid4())
+        attempt=self.client.post("/api/assignments/"+str(aid)+"/submit",headers=trainee,
+             json={"request_id":rid,"answers":[0,[0,1],0]})
+        self.assertEqual(attempt.status_code,200,attempt.text)
+        self.assertEqual((attempt.json()["score"],attempt.json()["passed"]),(100,True))
+        manager_results=self.client.get("/api/assignments/"+str(aid)+"/results",headers=m)
+        self.assertEqual(manager_results.status_code,200,manager_results.text)
+        self.assertEqual(len(manager_results.json()["attempts"]),1)
+        self.assertTrue(manager_results.json()["attempts"][0]["passed"])
+        repeat=self.client.post("/api/assignments/"+str(aid)+"/submit",headers=trainee,
+             json={"request_id":rid,"answers":[0,[0,1],0]})
+        self.assertEqual(repeat.json(),attempt.json())
+        second=self.client.post("/api/assignments/"+str(aid)+"/submit",headers=trainee,
+             json={"request_id":str(uuid.uuid4()),"answers":[1,[2],1]})
+        self.assertEqual(second.status_code,409,second.text)
         after=self.client.post(self.url(),json=synthetic_package(),headers=m)
         self.assertEqual(after.status_code,409,after.text)
 

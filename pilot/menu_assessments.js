@@ -68,6 +68,7 @@ function renderAssessment(){
  window.scrollTo(0,0);
 }
 function renderAssessmentResult(result){
+ if(result.stage==='control'&&result.passed&&activeCourse)activeCourse.control_passed=true;
  const stage=result.stage==="control"?"Контрольный тест":"Промежуточный тест";
  $("#app").innerHTML=assessmentHeader()+
  '<section class="card result-card"><h1>'+stage+'</h1>'+
