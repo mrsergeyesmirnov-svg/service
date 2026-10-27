@@ -166,6 +166,7 @@ function dishCourseForm(){
 async function publishReviewScreen(c){
   if(!c)throw Error('Курс не найден');
   const mapping=await api('learning/'+c.id+'/dish-map');
+  const publication=await api('courses/'+c.id+'/publication-check');
   const wine=await api('wine-cards/'+c.id);
   let material='';
   let ready=true;
@@ -199,10 +200,15 @@ async function publishReviewScreen(c){
     '<p>'+esc(q.explanation)+'</p><p class="muted">Источник: '+esc(q.source)+'</p></details>').join('');
   $('#app').innerHTML=workspaceHeader('Проверка перед публикацией','Убедись, что составы, формулировки и правильные ответы соответствуют материалам MOJO.')+
     qualityNotice(c)+material+'<h2>Вопросы: '+c.questions.length+'</h2>'+
-    (review||'<div class="card">Тест пока не создан. Сначала получи предложения ИИ и проверь их.</div>')+
-    (ready&&c.questions.length?'<section class="card"><p>Практические кейсы публикуются отдельно после проверки их критериев.</p>'+
+    (review||(publication.mode==='staged-menu'?'<div class="card">Отдельный ИИ-тест не требуется: промежуточная и контрольная проверки автоматически строятся из утверждённых составов после публикации.</div>':'<div class="card">Тест пока не создан. Добавь вопросы или привяжи утверждённые карточки блюд.</div>'))+
+    (ready&&publication.ready?'<section class="card"><p>'+
+      (publication.mode==='staged-menu'?'Проверено: '+publication.mapped_dishes+' блюд. Промежуточный тест и контроль каждого состава доступны без ИИ после публикации курса.':'Тест содержит '+publication.questions+' проверенных вопросов.')+
+      ' Практические кейсы публикуются отдельно и не блокируют этот курс.</p>'+
       btn('Материал и ответы проверены — опубликовать','approve',c.id,'lime-action')+'</section>':
-      '<p class="muted">Публикация недоступна, пока не утверждены все карточки и вопросы.</p>')+
+      '<section class="card academy-manager-warning"><h3>Что мешает публикации</h3><ul>'+
+      publication.blockers.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+
+      (!mapping.dish_ids.length?'<p>Для курса меню сначала привяжи утверждённые блюда через «Собрать главы из карточек». Для обычного PDF-курса добавь проверенные вопросы.</p>'+btn('Собрать главы из карточек','course-map',c.id,'secondary'):'')+
+      '</section>')+
     btn('Вернуться к программам','nav','courses','secondary');
 }
 function qHtml(q,i){return `<fieldset class="question" data-question="${i}"><legend>Вопрос ${i+1}</legend><label>Формат<select name="type">${[['single','Один ответ'],['multiple','Несколько ответов'],['ingredients','Состав по памяти']].map(([v,l])=>`<option value="${v}" ${(q.type||'single')===v?'selected':''}>${l}</option>`).join('')}</select></label><label>Вопрос<input name="question" required value="${esc(q.question)}"></label><label>Варианты выбора — один на строку<textarea name="options">${esc((q.options||[]).join('\n'))}</textarea></label><label>Номера верных вариантов через запятую<input name="correct" value="${esc(q.correct===undefined?'':(Array.isArray(q.correct)?q.correct:[q.correct]).map(n=>n+1).join(', '))}"></label><label>Для состава: ингредиент на строку, допустимые названия через |<textarea name="ingredients">${esc((q.ingredients||[]).map(g=>g.join(' | ')).join('\n'))}</textarea></label><label>Объяснение<textarea name="explanation" required>${esc(q.explanation)}</textarea></label><label>Источник<input name="source" required value="${esc(q.source)}"></label>${btn('Убрать вопрос','remove-q',i,'secondary')}</fieldset>`}
