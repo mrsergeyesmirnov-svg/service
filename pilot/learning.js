@@ -229,7 +229,7 @@ function showStudyResult(r){
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['study','study-practice','filter','direction','chapter-next','chapter-prev','chapter-review','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
+ if(!['lesson-tab','study','study-practice','filter','direction','chapter-next','chapter-prev','chapter-review','study-quiz','quiz-prev','study-results','course-map','course-map-add','course-map-remove','course-map-up','course-map-down','course-map-save','course-map-suggest','course-text-editor','text-chapter-add','text-chapter-remove','text-chapter-up','text-chapter-down','text-chapter-save'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='course-text-editor')await editTextChapters(Number(id));
