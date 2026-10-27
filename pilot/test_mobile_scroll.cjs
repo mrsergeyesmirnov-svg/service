@@ -5,7 +5,7 @@ const assert=require("node:assert/strict");
 const src=fs.readFileSync("dishes.js","utf8");
 const html=fs.readFileSync("index.html","utf8");
 const css=fs.readFileSync("mobile_polish.css","utf8");
-assert.match(html,/mobile_polish\.css\?v=20261027-simple1/);
+assert.match(html,/mobile_polish\.css\?v=20261027-buttons1/);
 assert.match(css,/-webkit-overflow-scrolling:touch/);
 assert.match(css,/backdrop-filter:none/);
 let fetched=0, observer;
