@@ -254,7 +254,9 @@ def publication_status(c,row):
     """Single server-side source of truth for manager UI and actual publishing."""
     mapped=map_details(c,row['id'])
     problems=[]
-    use_stages=bool(mapped and not row['questions'])
+    # Menu control exams must remain mandatory even when the manager adds
+    # optional AI practice questions to the course.
+    use_stages=bool(mapped)
     signature=row['reviewed_dish_signature']
     if row['archived']:
         problems.append('Курс в архиве: создай новую версию')
