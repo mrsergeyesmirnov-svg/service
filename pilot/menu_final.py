@@ -109,6 +109,8 @@ def make_router(db,require,manager,scope,audit):
         slots=d.get("slots")
         if not isinstance(slots,dict) or set(slots)!={key for key,_ in SLOTS}:
             raise HTTPException(422,"Нужно назначить семь разделов меню и десерты")
+        if any(type(x)!=int or x<=0 for x in slots.values()):
+            raise HTTPException(422,"Укажи действительные идентификаторы курсов")
         if len(set(slots.values()))!=len(SLOTS):
             raise HTTPException(422,"Для каждого раздела нужен отдельный курс")
         pass_score=d.get("pass_score",85)
