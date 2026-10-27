@@ -8,7 +8,7 @@ from dish_lessons import dish_chapters, map_details, save_mapping, reviewed_dish
 from course_pdf import course_chapters_from_pdf, MAX_PDF_BYTES
 from dishes import limited_body
 from quiz_cards import approved_card_questions
-from course_ai import generate_review_drafts, dish_review_chapters
+from course_ai import generate_review_drafts, dish_review_chapters, planned_question_count
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from cases_api import evaluate_with_yandex, PRIVATE_DATA
@@ -107,7 +107,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
     def staged_menu_status(c, r, uid, parts):
         """Reading a menu section is NOT completing its required control exam."""
         mapped = bool(map_details(c, r['id']))
-        if not mapped or r['questions']:
+        if not mapped:
             return False, False
         signature = r['reviewed_dish_signature']
         if not signature or not parts:
@@ -228,6 +228,8 @@ def make_learning_router(db, require, manager, scope, grade, audit):
         from question_quality import quality_issues
         return {'status':'draft','questions':len(questions),'cases':len(created),
                 'chapters':len(chapters),'batches':(len(chapters)+15)//16,
+                'planned_questions':planned_question_count(chapters),
+                'skipped_questions':planned_question_count(chapters)-len(questions),
                 'course_id':cid,'case_ids':created,'warnings':quality_issues(questions),
                 'review_required':True}
 
