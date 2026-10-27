@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import httpx
 from fastapi import HTTPException
-from course_ai import dish_review_chapters, excerpt_chapters, generate_review_drafts, validate_generated
+from course_ai import dish_review_chapters, excerpt_chapters, generate_review_drafts, validate_generated, _one_question, _generate_one_batch, planned_question_count
 
 
 def reviewed(ingredients=None, description=""):
@@ -122,57 +122,95 @@ class DraftGenerationTests(unittest.TestCase):
         self.assertEqual(questions[0]["correct"],0)
         self.assertEqual(len(cases),1)
 
-    def test_malformed_json_automatically_retries_once_and_recovers(self):
+    def test_one_ai_request_contains_one_question_and_no_case(self):
+        chapter=dish_review_chapters([reviewed()])[0]
+        response=model_reply(json.dumps({
+            "type":"single","question":"Что уточнить перед рекомендацией?",
+            "options":["Состав по ТТК","Срок доставки","Номер смены"],
+            "correct":[0],"explanation":"Уточнить по утверждённой ТТК"
+        },ensure_ascii=False))
+        with patch.dict(os.environ,{"YANDEX_API_KEY":"synthetic","YANDEX_FOLDER_ID":"synthetic"}):
+            with patch("course_ai.httpx.Client") as client:
+                client.return_value.__enter__.return_value.post.return_value=response
+                q=_one_question(chapter,0)
+                payload=client.return_value.__enter__.return_value.post.call_args.kwargs["json"]
+        self.assertEqual(q["correct"],0)
+        self.assertEqual(q["source"],"MOJO ТТК, стр. 14")
+        self.assertEqual(client.return_value.__enter__.return_value.post.call_count,1)
+        self.assertIn("type",payload["response_format"]["json_schema"]["schema"]["properties"])
+        self.assertNotIn("cases",payload["response_format"]["json_schema"]["schema"]["properties"])
+
+    def test_one_bad_answer_does_not_erase_three_good_questions(self):
+        chapters=dish_review_chapters([
+            dict(reviewed(),title=f"Ролл {i}") for i in range(16)
+        ])
+        calls=[]
+        def fake_one(chapter,variant):
+            calls.append((chapter["title"],variant))
+            if variant==1:
+                raise HTTPException(502,"ИИ дважды вернул некорректный вопрос")
+            return {"type":"single","question":f"{chapter['title']} — вопрос {variant}",
+                "options":["А","Б","В"],"correct":0,
+                "explanation":"Проверить по ТТК","source":chapter["source"]}
+        with patch("course_ai._one_question",side_effect=fake_one):
+            with patch("course_ai._one_case",side_effect=HTTPException(502,"bad case")):
+                questions,cases=_generate_one_batch(chapters)
+        self.assertEqual(len(questions),4)
+        self.assertEqual(cases,[])
+        self.assertEqual(len(calls),5)
+        self.assertEqual(planned_question_count(chapters),4)
+
+    def test_all_question_failures_raise_not_a_fake_published_test(self):
         chapters=dish_review_chapters([reviewed()])
+        with patch("course_ai._one_question",side_effect=HTTPException(502,
+                "ИИ дважды вернул некорректный вопрос")) as single:
+            with patch("course_ai._one_case") as cases:
+                with self.assertRaises(HTTPException) as e:
+                    generate_review_drafts(chapters)
+        self.assertEqual(e.exception.status_code,502)
+        self.assertIn("Недостаточно",e.exception.detail)
+        self.assertEqual(single.call_count,5)
+        cases.assert_not_called()
+
+    def test_malformed_single_question_is_retried_once(self):
+        chapter=dish_review_chapters([reviewed()])[0]
+        valid={"type":"single","question":"Что проверим?",
+            "options":["Источник","Догадку","Сплетни"],
+            "correct":[0],"explanation":"По источнику"}
         with patch.dict(os.environ,{"YANDEX_API_KEY":"synthetic","YANDEX_FOLDER_ID":"synthetic"}):
             with patch("course_ai.httpx.Client") as client:
                 client.return_value.__enter__.return_value.post.side_effect=[
-                    model_reply('{"questions": ['),
-                    model_reply(json.dumps(sample_generation(),ensure_ascii=False))
+                    model_reply('{"type":'),
+                    model_reply(json.dumps(valid,ensure_ascii=False))
                 ]
-                questions,cases=generate_review_drafts(chapters)
-                calls=client.return_value.__enter__.return_value.post.call_args_list
-        self.assertEqual(len(calls),2)
-        self.assertEqual(len(questions),3)
-        self.assertEqual(len(cases),1)
-        self.assertEqual(calls[1].kwargs["json"]["temperature"],0)
-        self.assertIn("ПРЕДЫДУЩИЙ ОТВЕТ",calls[1].kwargs["json"]["messages"][0]["content"])
+                question=_one_question(chapter)
+        self.assertEqual(question["correct"],0)
+        self.assertEqual(client.return_value.__enter__.return_value.post.call_count,2)
 
-    def test_invalid_question_answer_retries_without_weaker_validation(self):
-        chapters=dish_review_chapters([reviewed()])
-        bad=sample_generation()
-        bad["questions"][0]["correct"]=[99]
+    def test_bad_correct_index_remains_blocked_after_retry(self):
+        chapter=dish_review_chapters([reviewed()])[0]
+        bad={"type":"single","question":"Что выбрать?",
+            "options":["А","Б","В"],"correct":[99],"explanation":"По ТТК"}
         with patch.dict(os.environ,{"YANDEX_API_KEY":"synthetic","YANDEX_FOLDER_ID":"synthetic"}):
             with patch("course_ai.httpx.Client") as client:
-                response=model_reply(json.dumps(bad,ensure_ascii=False))
-                client.return_value.__enter__.return_value.post.return_value=response
+                client.return_value.__enter__.return_value.post.return_value=model_reply(
+                    json.dumps(bad,ensure_ascii=False))
                 with self.assertRaises(HTTPException) as e:
-                    generate_review_drafts(chapters)
-                calls=client.return_value.__enter__.return_value.post.call_count
-        self.assertEqual(calls,2)
+                    _one_question(chapter)
         self.assertEqual(e.exception.status_code,502)
+        self.assertEqual(client.return_value.__enter__.return_value.post.call_count,2)
 
     def test_provider_timeout_explained_without_leaking_source(self):
-        with patch.dict(os.environ, {"YANDEX_API_KEY": "synthetic", "YANDEX_FOLDER_ID": "synthetic"}):
+        chapter=dish_review_chapters([reviewed()])[0]
+        with patch.dict(os.environ, {"YANDEX_API_KEY":"synthetic","YANDEX_FOLDER_ID":"synthetic"}):
             with patch("course_ai.httpx.Client") as client:
                 client.return_value.__enter__.return_value.post.side_effect=httpx.ReadTimeout("internal")
                 with self.assertRaises(HTTPException) as e:
-                    generate_review_drafts(dish_review_chapters([reviewed()]))
+                    _one_question(chapter)
         self.assertEqual(e.exception.status_code,504)
-        self.assertIn("45 секунд",e.exception.detail)
+        self.assertIn("35 секунд",e.exception.detail)
         self.assertNotIn("internal",e.exception.detail)
 
-    def test_invalid_answer_explained_as_validation(self):
-        with patch.dict(os.environ, {"YANDEX_API_KEY": "synthetic", "YANDEX_FOLDER_ID": "synthetic"}):
-            with patch("course_ai.httpx.Client") as client:
-                response=MagicMock()
-                response.json.return_value={"choices":[{"message":{"content":"not-json"}}]}
-                client.return_value.__enter__.return_value.post.return_value=response
-                with self.assertRaises(HTTPException) as e:
-                    generate_review_drafts(dish_review_chapters([reviewed()]))
-        self.assertEqual(e.exception.status_code,502)
-        self.assertIn("дважды",e.exception.detail)
-        self.assertEqual(client.return_value.__enter__.return_value.post.call_count,2)
 
 
 if __name__ == "__main__":
