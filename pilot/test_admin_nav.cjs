@@ -65,13 +65,20 @@ async function main() {
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
   assert.match(html, /learning\.js\?v=20261027-stages1/);
-  assert.match(html, /pilot\.js\?v=20261027-service1/);
+  assert.match(html, /pilot\.js\?v=20261027-buttons1/);
   assert.match(html, /dishes\.js\?v=20261027-nav1/);
   assert.match(html, /wine_cards\.js\?v=20261026-1/);
   assert.match(html, /menu_assessments\.js\?v=20261027-stages1/);
   assert.match(html, /wine_cards\.css\?v=20261026-1/);
   assert.match(mainCode, /Скачать шаблон ТТК/);
   assert.match(html, /learning\.css\?v=20261023-events1/);
+  assert.match(html, /mobile_polish\.css\?v=20261027-buttons1/);
+  const polished = fs.readFileSync('mobile_polish.css', 'utf8');
+  assert.match(polished, /\.manager-home-primary\s*>\s*button\.lime-action\s*\{/);
+  assert.match(polished, /background:#D5ED89/);
+  assert.match(polished, /\.manager-tools\s*>\s*button\.manager-tool/);
+  assert.match(mainCode, /<strong>Команда<\/strong>/);
+  assert.match(mainCode, /<strong>Результаты<\/strong>/);
   assert.match(html, /events\.js\?v=20261023-events1/);
   const calls=[];
   const assignment={id:42,course_id:7,title:'Required',deadline:'2026-10-24',

@@ -67,13 +67,13 @@ async function managerDashboard(){
     '<section class="card manager-home-primary"><span class="eyebrow">СОЗДАНИЕ ПРОГРАММЫ</span>'+
       '<h2>Обучение по материалам MOJO</h2><p class="muted">Загрузи PDF, проверь главы и предложения ИИ, затем опубликуй курс.</p>'+
       btn('Открыть программы →','nav','courses','lime-action')+'</section>'+
-    '<div class="manager-tools"><button class="manager-tool" data-action="nav" data-id="team"><strong>Команда →</strong>'+
+    '<div class="manager-tools"><button class="manager-tool" data-action="nav" data-id="team"><strong>Команда</strong>'+
       '<small>Доступы и подтверждения</small></button>'+
-      '<button class="manager-tool" data-action="nav" data-id="assignments"><strong>Результаты →</strong>'+
+      '<button class="manager-tool" data-action="nav" data-id="assignments"><strong>Результаты</strong>'+
       '<small>Прогресс и попытки</small></button>'+
-      '<button class="manager-tool" data-action="nav" data-id="events"><strong>Мероприятия →</strong>'+
+      '<button class="manager-tool" data-action="nav" data-id="events"><strong>Мероприятия</strong>'+
       '<small>Тренинги и запись</small></button>'+
-      '<button class="manager-tool" data-action="manager-cases"><strong>Практика →</strong>'+
+      '<button class="manager-tool" data-action="manager-cases"><strong>Практика</strong>'+
       '<small>Открытые кейсы с ИИ</small></button></div>'+
     '<h2>Ближайшие мероприятия</h2>'+
     (upcoming.length?upcoming.slice(0,2).map(e=>'<div class="card"><strong>'+esc(e.title)+'</strong>'+

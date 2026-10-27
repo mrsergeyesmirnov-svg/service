@@ -126,3 +126,91 @@ input:focus,textarea:focus,select:focus{
 @media(prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
 }
+
+
+/* Manager home: make the actual actions visible, not green text on green. */
+.manager-home-primary{
+  padding:22px;
+  border-radius:20px;
+}
+.manager-home-primary h2{
+  margin:11px 0 8px;
+  font-size:22px;
+  line-height:1.24;
+}
+.manager-home-primary p.muted{
+  margin:0;
+  line-height:1.5;
+  font-size:14px;
+}
+.manager-home-primary > button.lime-action{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  margin:20px 0 0;
+  min-height:50px;
+  padding:13px 16px;
+  border:0;
+  border-radius:13px;
+  background:#D5ED89;
+  color:#233F34;
+  font-size:15px;
+  font-weight:750;
+  text-align:center;
+}
+.manager-home-primary > button.lime-action:focus-visible{
+  outline-color:#D5ED89;
+}
+.manager-tools > button.manager-tool{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:flex-start;
+  gap:5px;
+  text-align:left;
+  min-height:92px;
+  padding:15px 38px 15px 16px;
+  border:1px solid #E6EDE8;
+  border-radius:16px;
+  background:white;
+  color:#233F34;
+  box-shadow:none;
+}
+.manager-tools > button.manager-tool::after{
+  content:"›";
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  font-size:24px;
+  line-height:1;
+  font-weight:400;
+  color:#7A937D;
+}
+.manager-tools > button.manager-tool strong{
+  display:block;
+  margin:0;
+  font-size:15px;
+  font-weight:700;
+  line-height:1.3;
+}
+.manager-tools > button.manager-tool small{
+  display:block;
+  margin:0;
+  font-size:12px;
+  font-weight:400;
+  line-height:1.35;
+  color:#6E7F75;
+}
+@media(max-width:400px){
+  .manager-tools{gap:9px}
+  .manager-tools > button.manager-tool{
+    padding:13px 27px 13px 12px;
+    min-height:84px;
+  }
+  .manager-tools > button.manager-tool strong{font-size:14px}
+  .manager-tools > button.manager-tool small{font-size:11px}
+  .manager-tools > button.manager-tool::after{right:9px;font-size:20px}
+}
