@@ -16,12 +16,16 @@ function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]
 function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,activeAssignment=null,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
-function learningDone(c){return c.chapters>0&&c.read===c.chapters&&(!c.questions||c.passed)}
+function learningDone(c){
+ if(!(c.chapters>0&&c.read===c.chapters))return false;
+ if(c.staged_menu)return c.control_passed===true;
+ return !c.questions||c.passed===true;
+}
 let courseFilter='all',courseQuery='';
 function courseCard(c){
  const progress=c.chapters?Math.round(100*c.read/c.chapters):0;
  const cover=c.cover_dish_id?dishPhoto(c.cover_dish_id,'course-cover'):'<span class="course-symbol">'+navSvg(c.category==='service'?'cases':'courses')+'</span>';
- return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+cover+'<span class="course-copy"><strong>'+esc(c.title)+'</strong><small>'+esc(directions[c.category]||'Обучение')+'</small><progress max="100" value="'+progress+'" aria-label="Прочитано '+progress+'%"></progress><small>'+(learningDone(c)?'Завершён':c.read+' из '+c.chapters+' глав')+'</small></span><span class="course-arrow" aria-hidden="true">'+(learningDone(c)?'✓':'›')+'</span></button>';
+ return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+cover+'<span class="course-copy"><strong>'+esc(c.title)+'</strong><small>'+esc(directions[c.category]||'Обучение')+'</small><progress max="100" value="'+progress+'" aria-label="Прочитано '+progress+'%"></progress><small>'+(learningDone(c)?'Завершён':c.staged_menu&&c.read===c.chapters?'Остались проверки знаний':c.read+' из '+c.chapters+' глав')+'</small></span><span class="course-arrow" aria-hidden="true">'+(learningDone(c)?'✓':'›')+'</span></button>';
 }
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
@@ -107,6 +111,15 @@ function chapterBody(p){
 }
 function showStudyComplete(){
  const c=activeCourse,passed=c.history.some(t=>t.passed);
+ if(c.staged_menu&&!c.control_passed){
+  $('#app').innerHTML=studyHeader('Материалы изучены')+
+   '<section class="card journey-next"><span class="eyebrow">ПРОВЕРКА ЗНАНИЙ</span>'+
+   '<h1>Материалы изучены</h1><p>Раздел ещё не завершён. Сначала пройди промежуточный тест, затем перечисли полный состав каждого блюда в контрольном тесте.</p>'+
+   '<div class="actions">'+btn('Перейти к проверке →','assessments-open','','lime-action')+
+   btn('Повторить материал','chapter-review','','secondary')+'</div></section>'+
+   btn('К моему пути','nav','home','secondary');
+  window.scrollTo(0,0);return;
+ }
  $('#app').innerHTML=studyHeader('Обучение завершено')+
   '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
   '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+ 
@@ -130,7 +143,7 @@ function showChapter(){
  chapterIndex=Math.min(Math.max(chapterIndex,0),c.chapters.length-1);
  const p=c.chapters[chapterIndex],read=c.chapters.filter(p=>c.read.includes(p.id)).length;
  const last=chapterIndex===c.chapters.length-1,passed=c.history.some(t=>t.passed);
- const nextLabel=last?(c.wine?.pairs.length&&!passed?'Перейти к карточкам вина →':c.menu?.pairs.length&&!passed?'Перейти к карточкам меню →':c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
+ const nextLabel=last?(c.wine?.pairs.length&&!passed?'Перейти к карточкам вина →':c.menu?.pairs.length&&!passed?'Перейти к карточкам меню →':c.staged_menu&&!c.control_passed?'К проверке знаний →':c.questions.length&&!passed?'Перейти к тесту →':c.chapters.some(x=>x.kind==='dish')?'К практике →':'Завершить урок →'):(c.read.includes(p.id)?'Следующая глава →':'Прочитано, далее →');
  $('#app').innerHTML=studyHeader('Глава '+(chapterIndex+1)+' из '+c.chapters.length)+
   '<div class="lesson-stage"><span class="stage-active">1 · Изучение</span>'+((c.wine?.pairs.length||c.menu?.pairs.length)?'<span>2 · Карточки</span><span>3 · Тест</span><span>4 · Практика</span>':'<span>2 · Тест</span><span>3 · Практика</span>')+'</div>'+
   '<div class="row lesson-progress"><strong>Глава '+(chapterIndex+1)+' / '+c.chapters.length+'</strong><span>'+read+' прочитано</span></div>'+
