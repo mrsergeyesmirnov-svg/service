@@ -100,7 +100,8 @@ function showStudyComplete(){
   '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+ 
   (c.wine?.pairs.length?btn('Повторить карточки вина','wine-practice','','secondary'):'')+
   (c.menu?.pairs.length?btn('Повторить карточки меню','menu-practice','','secondary'):'')+
-  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','lime-action'):btn('Практика ситуаций →','nav','cases','lime-action'))+
+  (c.menu?.pairs.length?btn('Проверка знаний по разделу','assessments-open','','lime-action'):'')+
+  (c.chapters.some(x=>x.kind==='dish')?btn('Практика с ИИ →','study-practice','','secondary'):btn('Практика ситуаций →','nav','cases','lime-action'))+
   btn('Повторить материал','chapter-review','','secondary')+'</section>'+
   btn('К моему пути','nav','home','secondary');
  window.scrollTo(0,0);

@@ -221,3 +221,22 @@ CREATE TABLE IF NOT EXISTS menu_card_progress (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY(staff_id,course_id)
 );
+
+
+-- Separate scored stages. Legacy training attempts and assigned tests stay untouched.
+CREATE TABLE IF NOT EXISTS menu_assessment_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ course_id BIGINT NOT NULL REFERENCES courses(id),
+ stage TEXT NOT NULL CHECK(stage IN ('intermediate','control')),
+ request_id UUID NOT NULL,
+ signature TEXT NOT NULL,
+ questions JSONB NOT NULL,
+ answers JSONB NOT NULL,
+ score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 100),
+ passed BOOLEAN NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(staff_id,course_id,stage,request_id)
+);
+CREATE INDEX IF NOT EXISTS menu_assessment_progress
+  ON menu_assessment_attempts(staff_id,course_id,signature,stage,passed);

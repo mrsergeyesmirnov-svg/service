@@ -75,10 +75,6 @@ document.addEventListener('click',async e=>{
   if(action==='menu-flip'){menuFlipped=!menuFlipped;renderMenuPractice()}
   if(action==='menu-rate')await rateMenu(id);
   if(action==='menu-return')showChapter();
-  if(action==='menu-continue'){
-   if(activeCourse.questions.length&&!activeCourse.history.some(t=>t.passed)){
-    quizIndex=0;quizAnswers=[];quizRequest=crypto.randomUUID();showStudyQuiz();
-   }else showStudyComplete();
-  }
+  if(action==='menu-continue')await openAssessmentFlow();
  }catch(err){error(err)}finally{b.disabled=false}
 });
