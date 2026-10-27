@@ -278,6 +278,25 @@ CREATE TABLE IF NOT EXISTS onboarding_quest_attempts (
  PRIMARY KEY(staff_id,quest_key)
 );
 CREATE INDEX IF NOT EXISTS onboarding_quests_pending ON onboarding_quest_attempts(status,submitted_at);
+
+-- Four stable first-day quests; managers can edit wording per restaurant.
+-- Keys do not change, so a manager edit never deletes previous submissions.
+CREATE TABLE IF NOT EXISTS onboarding_quest_settings (
+ restaurant TEXT NOT NULL,
+ quest_key TEXT NOT NULL CHECK(quest_key IN ('team','place','allergens','greeting')),
+ title TEXT NOT NULL,
+ instruction TEXT NOT NULL,
+ prompt TEXT NOT NULL,
+ requires_review BOOLEAN NOT NULL,
+ version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+ updated_by BIGINT NOT NULL REFERENCES staff(id),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(restaurant,quest_key)
+);
+-- Identify answers sent before edits without invalidating them.
+ALTER TABLE onboarding_quest_attempts ADD COLUMN IF NOT EXISTS quest_version
+ INTEGER NOT NULL DEFAULT 1;
+
 CREATE TABLE IF NOT EXISTS onboarding_feedback (
  staff_id BIGINT NOT NULL REFERENCES staff(id),
  day SMALLINT NOT NULL CHECK(day IN (1,2)),
