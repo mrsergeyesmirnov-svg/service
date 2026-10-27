@@ -117,10 +117,12 @@ async function programsPage(){
   cache=await api('courses');
   const active=cache.filter(c=>!c.archived),archive=cache.filter(c=>c.archived);
   function entry(c){
-    const primary=c.recipe_changed?btn('Создать новую версию','copy',c.id,'lime-action'):
+    let primary=c.recipe_changed?btn('Создать новую версию','copy',c.id,'lime-action'):
       c.archived?btn('Создать новую версию','copy',c.id,'secondary'):
       c.published?btn('Назначить сотрудникам','assign',c.id,'lime-action'):
         btn('Редактировать','edit',c.id,'lime-action')+btn('Проверить и опубликовать','publish',c.id,'secondary')+btn('В архив','archive-course',c.id,'secondary');
+    if(!c.published&&!c.archived&&c.kind==='service'&&/(сервис|smile|гостеприим)/i.test(c.title))
+      primary+=btn('Загрузить программу сервиса','service-package',c.id,'secondary');
     const extras=(!c.published&&!c.archived&&!c.questions.length?btn('Предложить тесты и кейсы (ИИ)','ai-generate',c.id,'secondary'):'')+
       btn('Предпросмотр','preview',c.id,'secondary')+
       (!c.archived?btn('Собрать главы из карточек','course-map',c.id,'secondary')+btn('Редактор текстовых глав','course-text-editor',c.id,'secondary')+btn('Карточки вина','wine-editor',c.id,'secondary'):'')+
@@ -140,6 +142,49 @@ async function programsPage(){
        (archive.map(entry).join('')||'<p class="muted">Архив пуст.</p>')+'</details>'+
     '<details class="card manager-more"><summary>Для разработчика: импорт JSON</summary>'+bulkImportPanel('courses')+'</details>';
   bindBulkImport('courses');bindCoursePdfImport();
+}
+function servicePackageScreen(cid){
+ const course=cache.find(x=>x.id===cid);
+ if(!course)return error(new Error('Не найден черновик курса'));
+ $('#app').innerHTML=workspaceHeader('Программа сервиса · импорт',
+    'Материалы, тесты и практические ситуации загружаются только в выбранный черновик. Публикация — после проверки менеджером.')+
+  '<section class="card"><h2>'+esc(course.title)+'</h2>'+
+  '<p>Выбери подготовленный JSON-пакет по сервисбуку MOJO. Новый курс не создаётся, текущий черновик сохраняет ID и остаётся закрытым.</p>'+
+  '<form id="service-package-form">'+
+  '<label>Пакет сервиса (.json)<input name="package" type="file" accept=".json,application/json" required></label>'+
+  '<button type="submit" class="lime-action">Добавить главы и вопросы в этот черновик</button>'+
+  '<p class="muted" id="service-package-status" role="status">Все составы вопросов и кейсы требуют проверки. Ничего не публикуется автоматически.</p></form></section>'+
+  btn('Вернуться к программам','nav','courses','secondary');
+ const form=$('#service-package-form');
+ form.onsubmit=async e=>{
+  e.preventDefault();
+  const file=form.elements.namedItem('package').files[0];
+  if(!file)return;
+  const status=$('#service-package-status'),button=form.querySelector('[type=submit]');
+  button.disabled=true;status.textContent='Проверяем пакет и сохраняем черновик…';
+  try{
+   if(file.size>220000||!file.name.toLowerCase().endsWith('.json'))throw Error('Выбери JSON до 220 КБ');
+   const payload=JSON.parse(await file.text());
+   if(payload?.format!=='mojo-service-pilot-v1'||!Array.isArray(payload.chapters)||!Array.isArray(payload.questions))
+     throw Error('Это не пакет сервиса MOJO. Нужен файл с главами и вопросами.');
+   let result;
+   try{result=await api('learning/'+cid+'/service-package','POST',payload)}
+   catch(err){
+    if(!/409|глава|замен|вопрос/i.test(err.message))throw err;
+    if(!confirm('В этом черновике уже есть материалы или вопросы. Заменить их проверенным пакетом? Сохранённые результаты не меняются.'))throw Error('Изменения отменены');
+    result=await api('learning/'+cid+'/service-package','POST',{...payload,replace:true});
+   }
+   cache=await api('courses');
+   $('#app').innerHTML=workspaceHeader('Программа добавлена','Только черновик — сотрудники не получили доступ')+
+      '<section class="card"><h2>'+esc(course.title)+'</h2>'+
+      '<p>'+result.chapters+' учебных глав · '+result.questions+' вопросов · '+
+      result.cases_created+' новых черновиков кейсов.</p>'+
+      '<p>Проверь вопросы, источники и правильные ответы, прежде чем публиковать курс.</p>'+
+      btn('Проверить перед публикацией','publish',cid,'lime-action')+
+      btn('Назад к программам','nav','courses','secondary')+'</section>';
+  }catch(err){status.textContent=err.message||'Не удалось сохранить пакет';}
+  finally{button.disabled=false}
+ };
 }
 function dishCourseForm(){
   $('#app').innerHTML=workspaceHeader('Курс из карточек блюд','Сначала собери курс из утверждённых карточек. Затем ИИ предложит тесты и практические кейсы.')+
@@ -217,7 +262,7 @@ function editor(){ $('#app').innerHTML=`<h1>${draft.id?'Редактироват
 async function lesson(id){await studyAssignment(id)}
 
 async function assignForm(id){const team=await api('team');$('#app').innerHTML=`<h1>Назначить обучение</h1><form id="assign" class="card"><label>Срок<input type="date" name="deadline" required></label><label>Число попыток<input name="max_attempts" type="number" min="1" max="20" value="3" required></label><h2>Сотрудники</h2>${team.filter(s=>(['trainee','waiter'].includes(s.role)||s.id===user.id)&&s.active).map(s=>`<label><input type="checkbox" name="staff" value="${s.id}">${esc(s.name)}</label>`).join('')}<p>После назначения бот отправит каждому выбранному сотруднику сообщение в личный чат.</p><button>Назначить и уведомить</button></form>`;$('#assign').onsubmit=async e=>{e.preventDefault();const b=e.target.querySelector('button');b.disabled=true;try{const f=new FormData(e.target);const r=await api('assignments','POST',{course_id:Number(id),staff_ids:f.getAll('staff').map(Number),deadline:f.get('deadline'),max_attempts:Number(f.get('max_attempts'))});view='assignments';await render();if(!r.created.length)alert('Этот курс уже назначен выбранным сотрудникам.')}catch(e){b.disabled=false;error(e)}}}
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const {action,id}=b.dataset;try{switch(action){case'nav':if(isManager()&&['dashboard','team','courses','assignments'].includes(id))managerMode=true;else if(['home','catalog'].includes(id))managerMode=false;view=id;await render();break;case'open-manager':managerMode=true;view='dashboard';await render();break;case'ai-generate':await generateCourseProposal(Number(id));break;case'dish-course-new':dishCourseForm();break;case'leave-manage':managerMode=false;view='home';await render();break;case'manager-cases':managerMode=true;view='cases';nav();await casesPage();break;case'case-results':await caseResults(Number(id));break;case'case-new':caseEditor();break;case'case-review':caseReview(Number(id));break;case'case-edit':caseEditor(Number(id));break;case'case-open':await caseDetail(Number(id));break;case'case-publish':if(confirm('Материал, источник и критерии проверены менеджером?')){await api('cases/'+id+'/publish','POST',{reviewed:true});await casesPage()}break;case'case-archive':if(confirm('Скрыть старую опубликованную версию от сотрудников? История ответов сохранится.')){await api('cases/'+id+'/archive','POST',{confirmed:true});await casesPage()}break;case'invite':{const r=await api('invites','POST',{role:$('#invite-role').value});$('#invite-result').innerHTML=`<p>Одноразовая ссылка, действует 7 дней:</p><input readonly value="${esc(r.url)}"><p class="muted">Отправьте сотруднику. Он должен открыть ссылку и нажать «Старт». После этого проверь его Telegram ID в разделе «Команда» и подтверди доступ.</p>`;break}case'approve-staff':if(confirm('Ты лично проверил, кому принадлежит этот Telegram ID? После подтверждения сотрудник получит доступ к внутренним материалам.')){await api('team/'+id+'/approve','POST',{});await render()}break;case'promote':if(confirm('Подтвердить перевод сотрудника в официанты после очного допуска?')){await api('team/'+id+'/role','POST',{role:'waiter'});await render()}break;case'preview':previewCourse(cache.find(c=>c.id==id));break;case'new':draft={title:'',body:'',source:'',kind:'service',pass_score:80,questions:[]};editor();break;case'edit':case'copy':draft=structuredClone(cache.find(x=>x.id==id));if(action==='copy'){delete draft.id;alert('Новая версия курса создаётся отдельно. Карточки вина не переносятся автоматически: проверь и внеси их через редактор перед публикацией.')}editor();break;case'add-q':readDraft();draft.questions.push({question:'',options:['',''],correct:0,explanation:'',source:''});editor();break;case'remove-q':readDraft();draft.questions.splice(Number(id),1);editor();break;case'publish':await publishReviewScreen(cache.find(x=>x.id==id));break;case'approve':await api('courses/'+id+'/publish','POST',{reviewed:true});await render();break;case'archive-course':if(confirm('Убрать материал из активного списка в архив? Это не удаление из базы. Опубликованный курс и ранее назначенные тесты станут недоступны, история попыток сохранится.')){await api('courses/'+id+'/archive','POST',{});await render()}break;case'assign':await assignForm(id);break;case'lesson':await lesson(id);break;case'ack':await api('assignments/'+id+'/acknowledge','POST',{});await lesson(id);break;case'results':{const r=await api('assignments/'+id+'/results');$('#app').innerHTML='<h1>Ответы сотрудника</h1>'+r.attempts.map(t=>`<div class="card"><h2>${t.score}% · ${t.passed?'Сдано':'Не сдано'}</h2><p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))}</p>${r.questions.map((q,i)=>`<p><b>${esc(q.question)}</b><br>Ответ: ${esc(answerLabel(q,t.answers[i]))}<br>Правильно: ${esc(correctLabel(q))}</p>`).join('')}</div>`).join('');break}}}catch(e){error(e)}});
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-action]');if(!b)return;const {action,id}=b.dataset;try{switch(action){case'nav':if(isManager()&&['dashboard','team','courses','assignments'].includes(id))managerMode=true;else if(['home','catalog'].includes(id))managerMode=false;view=id;await render();break;case'open-manager':managerMode=true;view='dashboard';await render();break;case'ai-generate':await generateCourseProposal(Number(id));break;case'service-package':servicePackageScreen(Number(id));break;case'dish-course-new':dishCourseForm();break;case'leave-manage':managerMode=false;view='home';await render();break;case'manager-cases':managerMode=true;view='cases';nav();await casesPage();break;case'case-results':await caseResults(Number(id));break;case'case-new':caseEditor();break;case'case-review':caseReview(Number(id));break;case'case-edit':caseEditor(Number(id));break;case'case-open':await caseDetail(Number(id));break;case'case-publish':if(confirm('Материал, источник и критерии проверены менеджером?')){await api('cases/'+id+'/publish','POST',{reviewed:true});await casesPage()}break;case'case-archive':if(confirm('Скрыть старую опубликованную версию от сотрудников? История ответов сохранится.')){await api('cases/'+id+'/archive','POST',{confirmed:true});await casesPage()}break;case'invite':{const r=await api('invites','POST',{role:$('#invite-role').value});$('#invite-result').innerHTML=`<p>Одноразовая ссылка, действует 7 дней:</p><input readonly value="${esc(r.url)}"><p class="muted">Отправьте сотруднику. Он должен открыть ссылку и нажать «Старт». После этого проверь его Telegram ID в разделе «Команда» и подтверди доступ.</p>`;break}case'approve-staff':if(confirm('Ты лично проверил, кому принадлежит этот Telegram ID? После подтверждения сотрудник получит доступ к внутренним материалам.')){await api('team/'+id+'/approve','POST',{});await render()}break;case'promote':if(confirm('Подтвердить перевод сотрудника в официанты после очного допуска?')){await api('team/'+id+'/role','POST',{role:'waiter'});await render()}break;case'preview':previewCourse(cache.find(c=>c.id==id));break;case'new':draft={title:'',body:'',source:'',kind:'service',pass_score:80,questions:[]};editor();break;case'edit':case'copy':draft=structuredClone(cache.find(x=>x.id==id));if(action==='copy'){delete draft.id;alert('Новая версия курса создаётся отдельно. Карточки вина не переносятся автоматически: проверь и внеси их через редактор перед публикацией.')}editor();break;case'add-q':readDraft();draft.questions.push({question:'',options:['',''],correct:0,explanation:'',source:''});editor();break;case'remove-q':readDraft();draft.questions.splice(Number(id),1);editor();break;case'publish':await publishReviewScreen(cache.find(x=>x.id==id));break;case'approve':await api('courses/'+id+'/publish','POST',{reviewed:true});await render();break;case'archive-course':if(confirm('Убрать материал из активного списка в архив? Это не удаление из базы. Опубликованный курс и ранее назначенные тесты станут недоступны, история попыток сохранится.')){await api('courses/'+id+'/archive','POST',{});await render()}break;case'assign':await assignForm(id);break;case'lesson':await lesson(id);break;case'ack':await api('assignments/'+id+'/acknowledge','POST',{});await lesson(id);break;case'results':{const r=await api('assignments/'+id+'/results');$('#app').innerHTML='<h1>Ответы сотрудника</h1>'+r.attempts.map(t=>`<div class="card"><h2>${t.score}% · ${t.passed?'Сдано':'Не сдано'}</h2><p>${esc(new Date(t.created_at).toLocaleString('ru-RU'))}</p>${r.questions.map((q,i)=>`<p><b>${esc(q.question)}</b><br>Ответ: ${esc(answerLabel(q,t.answers[i]))}<br>Правильно: ${esc(correctLabel(q))}</p>`).join('')}</div>`).join('');break}}}catch(e){error(e)}});
 (async()=>{try{const h=await api('health');if(!h.telegram_configured)throw Error('Подключение пилота ещё не завершено. Администратор настраивает бота.');const tg=window.Telegram?.WebApp;if(!tg?.initData)throw Error('Откройте Академию через личный чат с @skill_mojo_bot. Для первого входа нужна ссылка-приглашение.');tg.ready();tg.expand();const r=await api('login','POST',{initData:tg.initData});token=r.token;user=r.user;managerMode=isManager();view=managerMode?'dashboard':'home';await render();const aid=new URLSearchParams(location.search).get('assignment');if(aid)await lesson(Number(aid))}catch(e){$('#app').innerHTML=`<h1>Академия сервиса</h1><div class="card"><p>${esc(e.message)}</p><a class="button" href="https://t.me/skill_mojo_bot">Открыть бота</a></div>`}})();
 
 function previewCourse(c){
