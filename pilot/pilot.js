@@ -450,8 +450,9 @@ async function generateCourseProposal(cid){
     $('#app').innerHTML='<h1>Главы сохранены</h1><section class="card">'+
       '<h2>ИИ не подготовил предложения</h2>'+
       '<p>'+esc(err.message)+'</p>'+
-      '<p class="muted">Материал остался в закрытом черновике. Проверь главы и повтори генерацию позже. Никаких курсов или тестов автоматически не опубликовано.</p>'+
-      '<div class="actions">'+btn('Повторить ИИ-генерацию','ai-generate',cid,'lime-action')+
+      '<p class="muted">Материалы сохранены, и тест не опубликован. Можно создать вопросы вручную или повторить генерацию позже.</p>'+
+      '<div class="actions">'+btn('Добавить вопросы вручную','edit',cid,'lime-action')+
+      btn('Повторить ИИ-генерацию','ai-generate',cid,'secondary')+
       btn('Проверить материалы',materialsAction,cid,'secondary')+
       btn('К программам','nav','courses','secondary')+'</div></section>';
   }
