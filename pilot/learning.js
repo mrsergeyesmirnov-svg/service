@@ -28,7 +28,7 @@ async function learningPage(page){
  learningCourses=await api('learning');
  if(page==='catalog'){
   courseFilter='all';courseQuery='';
-  root.innerHTML='<h1>Программа обучения</h1><label class="course-search"><span>Поиск по курсам</span><input id="course-search" type="search" placeholder="Название курса" autocomplete="off"></label><div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div><div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Пока нет опубликованных курсов.</div>')+'</div><div class="practice-entry">'+btn('Практика →','nav','cases','secondary')+'</div>'+(isManager()?btn('Управление Академией','open-manager','','secondary'):'');
+  root.innerHTML='<h1>Программа обучения</h1><label class="course-search"><span>Поиск по курсам</span><input id="course-search" type="search" placeholder="Название курса" autocomplete="off"></label><div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div><div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Пока нет опубликованных курсов.</div>')+'</div><div class="practice-entry">'+btn('Итоговый экзамен','menu-final-open','','secondary')+btn('Практика →','nav','cases','secondary')+'</div>'+(isManager()?btn('Управление Академией','open-manager','','secondary'):'');
   $('#course-search').oninput=e=>{courseQuery=e.target.value;filterCourses(courseFilter)};
   showDishPhotos();return;
  }

@@ -17,6 +17,7 @@ from events import make_events_router
 from wine_cards import make_router as make_wine_cards_router
 from menu_cards import make_router as make_menu_cards_router
 from menu_assessments import make_router as make_menu_assessments_router
+from menu_final import make_router as make_menu_final_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -107,6 +108,7 @@ app.include_router(make_learning_router(lambda: db(), require, manager, scope, g
 app.include_router(make_wine_cards_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_menu_cards_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_menu_assessments_router(lambda: db(), require, manager, scope, audit))
+app.include_router(make_menu_final_router(lambda: db(), require, manager, scope, audit))
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
@@ -399,6 +401,9 @@ def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/c
 
 @app.get('/pilot/learner.css')
 def learner_styles():return FileResponse(BASE/'learner.css',media_type='text/css')
+
+@app.get('/pilot/menu_final.js')
+def menu_final_script():return FileResponse(BASE/'menu_final.js',media_type='application/javascript')
 
 @app.get('/pilot/menu_assessments.js')
 def menu_assessment_script():return FileResponse(BASE/'menu_assessments.js',media_type='application/javascript')

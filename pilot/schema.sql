@@ -240,3 +240,28 @@ CREATE TABLE IF NOT EXISTS menu_assessment_attempts (
 );
 CREATE INDEX IF NOT EXISTS menu_assessment_progress
   ON menu_assessment_attempts(staff_id,course_id,signature,stage,passed);
+
+
+-- Manager-selected final syllabus. Existing quizzes and learning attempts unchanged.
+CREATE TABLE IF NOT EXISTS menu_final_config (
+ restaurant TEXT PRIMARY KEY,
+ slots JSONB NOT NULL,
+ pass_score INT NOT NULL CHECK(pass_score BETWEEN 70 AND 100),
+ updated_by BIGINT NOT NULL REFERENCES staff(id),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS menu_final_attempts (
+ id BIGSERIAL PRIMARY KEY,
+ staff_id BIGINT NOT NULL REFERENCES staff(id),
+ restaurant TEXT NOT NULL,
+ request_id UUID NOT NULL,
+ signature TEXT NOT NULL,
+ questions JSONB NOT NULL,
+ answers JSONB NOT NULL,
+ score INT NOT NULL CHECK(score BETWEEN 0 AND 100),
+ passed BOOLEAN NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ UNIQUE(staff_id,request_id)
+);
+CREATE INDEX IF NOT EXISTS menu_final_passed
+ ON menu_final_attempts(staff_id,signature,passed);
