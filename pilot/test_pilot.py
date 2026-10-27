@@ -203,6 +203,71 @@ class Integration(unittest.TestCase):
         self.assertEqual(len(drafts),1)
         self.assertFalse(drafts[0]['published'])
 
+    def test_generate_37_chapter_course_is_one_unpublished_atomic_draft(self):
+        from psycopg.types.json import Jsonb
+        manager=self.auth(999)
+        outline=[dict(title=f"Ролл {i}",body="Утверждённый состав: рис, нори, лосось.",
+                      source=f"MOJO ТТК, стр. {i+1}") for i in range(37)]
+        with server.db() as c:
+            cid=c.execute("""INSERT INTO courses
+                  (author,restaurant,title,kind,body,source,questions,pass_score)
+                  VALUES(999,'MOJO','37 глав','service','Учебный текст','MOJO',
+                         '[]'::jsonb,80) RETURNING id""").fetchone()['id']
+            c.execute("INSERT INTO course_text_outline(course_id,chapters) VALUES(%s,%s)",
+                      (cid,Jsonb(outline)))
+        covered=[]
+        def mock_batch(chapters):
+            covered.extend(x["title"] for x in chapters)
+            first=chapters[0]
+            question=dict(type='single',
+                question='Какие компоненты указаны у '+first['title']+'?',
+                options=['Рис, нори, лосось','Неизвестный рецепт'],correct=0,
+                explanation='Изучить утверждённый состав',source=first['source'])
+            case=dict(title='Пояснить '+first['title'],
+                competency='Знание меню',action='Уточнить компоненты блюда',
+                scenario='Гость попросил объяснить состав выбранного ролла.',
+                source=first['source'],criteria=['Сверить с ТТК','Не придумывать аллергены'])
+            return [question],[case]
+        with patch('course_ai._generate_one_batch',side_effect=mock_batch):
+            response=self.client.post(f'/api/learning/{cid}/generate',headers=manager)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['questions'],3)
+        self.assertEqual(response.json()['cases'],3)
+        self.assertTrue(response.json()['review_required'])
+        self.assertEqual(set(covered),{x['title'] for x in outline})
+        with server.db() as c:
+            row=c.execute('SELECT published,questions FROM courses WHERE id=%s',(cid,)).fetchone()
+            self.assertFalse(row['published'])
+            self.assertEqual(len(row['questions']),3)
+        self.assertEqual(self.client.post(f'/api/learning/{cid}/generate',
+            headers=manager).status_code,409)
+
+    def test_generate_batch_failure_does_not_save_partial_test_or_cases(self):
+        from psycopg.types.json import Jsonb
+        manager=self.auth(999)
+        with server.db() as c:
+            cid=c.execute("""INSERT INTO courses
+                (author,restaurant,title,kind,body,source,questions,pass_score)
+                VALUES(999,'MOJO','Large failure','service','Learning','MOJO',
+                       '[]'::jsonb,80) RETURNING id""").fetchone()['id']
+            c.execute("INSERT INTO course_text_outline(course_id,chapters) VALUES(%s,%s)",
+                 (cid,Jsonb([dict(title=f"Chapter {i}",body="Synthetic",
+                                  source="MOJO") for i in range(33)])))
+        def fail_middle(chapters):
+            if chapters[0]['title']=='Chapter 16':
+                raise server.HTTPException(502,'Synthetic provider failure')
+            question=dict(type='single',question='Draft',options=['A','B'],
+                          correct=0,explanation='Synthetic',source='MOJO')
+            return [question],[]
+        with patch('course_ai._generate_one_batch',side_effect=fail_middle):
+            response=self.client.post(f'/api/learning/{cid}/generate',headers=manager)
+        self.assertEqual(response.status_code,502,response.text)
+        with server.db() as c:
+            self.assertEqual(c.execute('SELECT questions FROM courses WHERE id=%s',
+                             (cid,)).fetchone()['questions'],[])
+            self.assertEqual(c.execute('SELECT count(*) AS n FROM case_scenarios WHERE restaurant=%s',
+                             ('MOJO',)).fetchone()['n'],0)
+
     def test_service_manager_uploads_pdf_as_editable_draft_and_adds_test(self):
         import fitz
         from course_pdf import course_chapters_from_pdf
