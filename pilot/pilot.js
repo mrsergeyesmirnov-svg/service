@@ -6,13 +6,19 @@ const isManager=()=>['manager','local'].includes(user?.role);
 let caseCache=[];
 const btn=(label,action,id='',cls='')=>`<button class="${cls}" data-action="${action}" data-id="${id}">${label}</button>`;
 function error(e){const field=$('#error');field.textContent=e.message||e;field.setAttribute('role','alert');setTimeout(()=>{if(field.textContent===(e.message||e))field.textContent=''},14000)}
-async function api(path,method='GET',body){
-  const controller=new AbortController(),clock=setTimeout(()=>controller.abort(),45000);
+async function api(path,method='GET',body,timeoutMs=45000){
+  // Long AI generation may include multiple batches and one server-side
+  // validation repair; ordinary requests retain the fast 45-second bound.
+  const controller=new AbortController(),clock=setTimeout(()=>controller.abort(),timeoutMs);
   let response;
   try{
     response=await fetch('/api/'+path,{method,signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body===undefined?undefined:JSON.stringify(body)});
   }catch(e){
-    if(e.name==='AbortError')throw Error('Сервер не ответил за 45 секунд. Текст сохранён на экране — проверь соединение и повтори.');
+    if(e.name==='AbortError')throw Error(
+      timeoutMs>45000
+      ? 'Генерация долго не отвечает. Сначала проверь, появились ли вопросы в черновике, прежде чем запускать её повторно.'
+      : 'Сервер не ответил за 45 секунд. Текст сохранён на экране — проверь соединение и повтори.'
+    );
     throw Error('Нет соединения с Академией (сетевая ошибка). Твой ответ остался в поле — попробуй ещё раз.');
   }finally{clearTimeout(clock)}
   let data;
@@ -426,11 +432,12 @@ async function generateCourseProposal(cid){
     '<p role="status">Большой курс обрабатывается пакетами до 16 глав, но остаётся одним черновиком. Перед публикацией менеджер проверит каждый вопрос.</p>'+
     btn('Вернуться к программам','nav','courses','secondary')+'</section>';
   try{
-    const result=await api('learning/'+cid+'/generate','POST',{});
+    const result=await api('learning/'+cid+'/generate','POST',{},140000);
     cache=await api('courses');
     $('#app').innerHTML='<h1>Предложения готовы</h1><section class="card">'+
       '<p class="eyebrow">ЕЩЁ НЕ ОПУБЛИКОВАНО</p>'+
       '<h2>'+result.questions+' вопросов и '+result.cases+' практических кейсов</h2>'+
+      (result.cases===0?'<p class="muted">Вопросы готовы, но проверяемые кейсы ИИ не составил. Их можно добавить вручную; тест от этого не теряется.</p>':'')+
       '<p class="muted">Глав обработано: '+result.chapters+'. Пакетов: '+result.batches+'.</p>'+
       '<p>Проверь вопросы, варианты, факты, источники и критерии кейсов. ИИ может ошибаться. Сотрудники ничего не увидят до утверждения.</p>'+
       (result.warnings?.length?'<p class="muted">Автопроверка: '+result.warnings.length+' предупреждений. Исправь их в редакторе.</p>':'')+
