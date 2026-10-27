@@ -54,4 +54,4 @@ jobs:
           bash -n pilot/configure-ai.sh
           bash -n pilot/update-bot-only.sh
       - name: Unit and isolated PostgreSQL integration tests
-        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards
+        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation
