@@ -50,10 +50,12 @@ def validate_generated(raw, chapters):
     if not isinstance(raw,dict):
         raise ValueError("invalid generation")
     questions=raw.get("questions")
-    cases=raw.get("cases")
+    cases=raw.get("cases", [])
     if not isinstance(questions,list) or not 3 <= len(questions) <= 10:
         raise ValueError("invalid questions")
-    if not isinstance(cases,list) or not 1 <= len(cases) <= 3:
+    # Cases are optional. Invalid role-play drafts must not discard a valid
+    # manager-reviewable quiz; missing cases are shown explicitly in the UI.
+    if not isinstance(cases,list) or len(cases)>3:
         raise ValueError("invalid cases")
     def source_chapter(item):
         idx=item.get("chapter")
@@ -74,8 +76,11 @@ def validate_generated(raw, chapters):
         if rawq.get("type") not in ("single","multiple"):
             raise ValueError("invalid quiz type")
         correct=rawq.get("correct")
+        # Normalize a single integer index without changing its meaning.
+        if rawq["type"]=="single" and type(correct) is int:
+            correct=[correct]
         if (not isinstance(correct,list) or not correct or
-            len(correct)>4 or rawq["type"]=="single" and len(correct)!=1):
+            len(correct)>4 or (rawq["type"]=="single" and len(correct)!=1)):
             raise ValueError("invalid correct answers")
         q={
             "type":rawq["type"],"question":rawq.get("question"),
@@ -86,11 +91,16 @@ def validate_generated(raw, chapters):
         final.append(clean_question(q,text))
     prepared=[]
     for rawc in cases:
-        if not isinstance(rawc,dict):
-            raise ValueError("invalid case")
-        ch=source_chapter(rawc)
-        c=dict(rawc,source=ch.get("source") or ch["title"])
-        prepared.append(case_payload(c))
+        # A case is not required for course publication. Keep valid questions
+        # even when the model omits fields in its optional case proposals.
+        try:
+            if not isinstance(rawc,dict):
+                continue
+            ch=source_chapter(rawc)
+            c=dict(rawc,source=ch.get("source") or ch["title"])
+            prepared.append(case_payload(c))
+        except (HTTPException,ValueError,KeyError,TypeError):
+            continue
     if quality_issues(final):
         # Potential weaknesses are retained as warnings for the mandatory manager review.
         pass
@@ -123,13 +133,16 @@ def _generate_one_batch(chapters):
         "cases":{"type":"array","items":{"type":"object","properties":case_props,"required":list(case_props)}}
     },"required":["questions","cases"]}
     instruction=(
-        "Ты методист Академии сервиса ресторана MOJO. Составь 5-8 нетривиальных "
-        "проверяемых тестовых вопросов и 2 практические открытые ситуации "
+        "Ты методист Академии сервиса ресторана MOJO. Составь 4-6 нетривиальных "
+        "проверяемых тестовых вопросов и 1-2 практические открытые ситуации "
         "для официантов ИСКЛЮЧИТЕЛЬНО по данным из предоставленных глав. "
         "В тестах 3-5 правдоподобных вариантов, никаких очевидных подсказок "
         "в вопросе, никаких формулировок 'какой ингредиент указан'. "
-        "Хотя бы 1 тест с несколькими верными ответами. В correct всегда список "
-        "индексов с нуля, для single строго один индекс. "
+        "Хотя бы 1 тест с несколькими верными ответами. В correct всегда JSON-массив "
+        "целых индексов с нуля; для single строго один индекс. "
+        "chapter — целое число от 0 до количества входных глав минус 1. "
+        "Вопрос: type,question,options,correct,explanation,chapter. "
+        "Кейс: title,competency,action,scenario,criteria,chapter. "
         "Для каждого вопроса дай понятное объяснение, а chapter укажи как индекс "
         "использованной главы из входных данных. "
         "Кейсы проверяют наблюдаемые действия и умение решать ситуацию с гостем; "
@@ -150,20 +163,43 @@ def _generate_one_batch(chapters):
          {"role":"system","content":instruction},
          {"role":"user","content":json.dumps(source,ensure_ascii=False)}
        ],
-       "temperature":0.15,"max_tokens":3200,"stream":False,
+       "temperature":0.1,"max_tokens":5500,"stream":False,
        "response_format":{"type":"json_schema","json_schema":{
            "name":"mojo_learning_program_draft","schema":schema}}
     }
     try:
+        # One automatic schema-repair attempt in the same user action.
+        # Never store or log bad model responses, API keys, or course content.
         with httpx.Client(timeout=45.0) as client:
-            resp=client.post(AI_URL,json=payload,headers={
-              "Authorization":f"Api-Key {api_key}",
-              "OpenAI-Project":folder,
-              "Content-Type":"application/json"
-            })
-            resp.raise_for_status()
-            proposal=json.loads(resp.json()["choices"][0]["message"]["content"])
-        return validate_generated(proposal,chapters)
+            for attempt in range(2):
+                if attempt:
+                    payload["temperature"]=0
+                    payload["messages"][0]["content"] = (
+                        instruction +
+                        " ПРЕДЫДУЩИЙ ОТВЕТ НЕ ПРОШЁЛ ТЕХНИЧЕСКУЮ ПРОВЕРКУ. "
+                        "Сгенерируй заново только полный JSON по схеме. "
+                        "Нужны 4-6 валидных вопросов, 1-2 кейса, без markdown. "
+                        "correct — массив индексов, chapter — индекс главы "
+                        "из входных данных. Не придумывай факты."
+                    )
+                try:
+                    resp=client.post(AI_URL,json=payload,headers={
+                      "Authorization":f"Api-Key {api_key}",
+                      "OpenAI-Project":folder,
+                      "Content-Type":"application/json"
+                    })
+                    resp.raise_for_status()
+                    proposal=json.loads(resp.json()["choices"][0]["message"]["content"])
+                    return validate_generated(proposal,chapters)
+                except HTTPException as exc:
+                    if exc.status_code != 422:
+                        raise
+                    # Re-ask for correctly typed fields, not invented answers.
+                except (ValueError,KeyError,IndexError,TypeError,AttributeError):
+                    pass
+        raise HTTPException(502,
+            "ИИ дважды вернул вопросы неправильного формата. Черновик не изменён. "
+            "Проверь вопросы вручную или сообщи менеджеру.")
     except HTTPException:
         raise
     except httpx.TimeoutException:
@@ -175,7 +211,7 @@ def _generate_one_batch(chapters):
     except httpx.HTTPError:
         raise HTTPException(502,"Нет соединения с Yandex AI. Материалы сохранены, попробуй после восстановления доступа.")
     except (ValueError,KeyError,IndexError,TypeError,AttributeError):
-        raise HTTPException(502,"ИИ вернул ответ, не прошедший проверку структуры вопросов и кейсов. Материалы сохранены, вопросов нет.")
+        raise HTTPException(502,"Ответ ИИ повреждён. Материалы сохранены; тест не создан.")
 
 
 
