@@ -260,10 +260,15 @@ def _generate_one_batch(chapters):
         try:
             question=_one_question(chapters[i],variant)
         except HTTPException as err:
-            # Invalid JSON is isolated to one question. Network outage or rate
-            # limiting must stop costly calls, not silently burn project funds.
+            # A bad response can be skipped. A provider/network failure stops
+            # this batch, keeping any questions already generated successfully.
+            # Missing credentials is a configuration error, not a weak question.
+            if err.status_code==503 and "настрой" in str(err.detail):
+                raise
             if err.status_code==502 and "некорректный вопрос" in str(err.detail):
                 continue
+            if err.status_code in (429,502,503,504):
+                break
             raise
         fingerprint=question["question"].strip().casefold()
         if fingerprint in seen:
