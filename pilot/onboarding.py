@@ -36,6 +36,7 @@ LEVELS = {"know", "partial", "new"}
 
 def checked_text(data, field, limit=1200, required=True):
     value = data.get(field)
+    if value is None and not required: return ""
     if not isinstance(value, str) or len(value) > limit or (required and not value.strip()):
         raise HTTPException(422, "Проверь поле: " + field)
     return value.strip()
