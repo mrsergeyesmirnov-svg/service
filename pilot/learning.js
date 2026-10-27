@@ -122,7 +122,7 @@ function showStudyComplete(){
  }
  $('#app').innerHTML=studyHeader('Обучение завершено')+
   '<section class="card journey-next"><span class="eyebrow">ГОТОВО</span><h1>Отличная работа!</h1>'+
-  '<p>'+(passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+ 
+  '<p>'+(c.staged_menu&&c.control_passed?'Промежуточный и контрольный тесты сданы.':passed?'Тест сдан, результаты сохранены.':'Все главы прочитаны.')+'</p>'+ 
   (c.wine?.pairs.length?btn('Повторить карточки вина','wine-practice','','secondary'):'')+
   (c.menu?.pairs.length?btn('Повторить карточки меню','menu-practice','','secondary'):'')+
   (c.menu?.pairs.length?btn('Проверка знаний по разделу','assessments-open','','lime-action'):'')+
