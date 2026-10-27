@@ -366,6 +366,56 @@ class Integration(unittest.TestCase):
             'request_id':str(uuid.uuid4()),'answers':[0]},headers=s).status_code,409)
         self.assertEqual(self.client.put(route,json={'chapters':[dict(title='',body='bad')]},headers=m).status_code,422)
 
+    def test_published_menu_uses_source_verified_stages_without_ai_questions(self):
+        from io import BytesIO
+        from PIL import Image
+        manager=self.auth(999); trainee=self.auth(101)
+        payload={"title":"Роллы MOJO","kind":"ttk","body":"Утверждённые ТТК",
+                 "source":"MOJO synthetic", "questions":[],"pass_score":80}
+        created=self.client.post('/api/courses',headers=manager,json=payload)
+        self.assertEqual(created.status_code,200,created.text)
+        cid=created.json()['id']
+        pre=f'/api/courses/{cid}/publication-check'
+        self.assertEqual(self.client.get(pre,headers=trainee).status_code,403)
+        waiting=self.client.get(pre,headers=manager).json()
+        self.assertFalse(waiting['ready'])
+        self.assertFalse(waiting['cases_required'])
+        self.assertIn('Нет вопросов',waiting['blockers'][0])
+        ids=[]
+        photo=BytesIO();Image.new('RGB',(120,120)).save(photo,"JPEG")
+        for name,components in [
+            ("Ролл А",["Рис","Нори","Лосось"]),
+            ("Ролл Б",["Рис","Нори","Огурец"])]:
+            dish=self.client.post('/api/dishes',headers=manager,json={
+                "title":name,"section":"Роллы","ingredients":components,
+                "description":""})
+            self.assertEqual(dish.status_code,200,dish.text)
+            did=dish.json()['id']
+            self.assertEqual(self.client.put(f'/api/dishes/{did}/photo',
+                headers=manager,content=photo.getvalue()).status_code,200)
+            self.assertEqual(self.client.post(f'/api/dishes/{did}/publish',
+                headers=manager,json={"reviewed":True}).status_code,200)
+            ids.append(did)
+        mapurl=f'/api/learning/{cid}/dish-map'
+        self.assertEqual(self.client.put(mapurl,headers=manager,
+            json={"dish_ids":ids}).status_code,200)
+        prepared=self.client.get(pre,headers=manager).json()
+        self.assertTrue(prepared['ready'])
+        self.assertEqual(prepared['mode'],'staged-menu')
+        self.assertEqual(prepared['questions'],0)
+        self.assertEqual(prepared['mapped_dishes'],2)
+        self.assertEqual(self.client.post(f'/api/courses/{cid}/publish',
+            headers=manager,json={"reviewed":False}).status_code,422)
+        result=self.client.post(f'/api/courses/{cid}/publish',
+            headers=manager,json={"reviewed":True})
+        self.assertEqual(result.status_code,200,result.text)
+        course=self.client.get(f'/api/learning/{cid}',headers=trainee)
+        self.assertEqual(course.status_code,200,course.text)
+        stages=self.client.get(f'/api/menu-assessments/{cid}',headers=trainee)
+        self.assertEqual(stages.status_code,200,stages.text)
+        self.assertFalse(stages.json()['all_read'])
+        self.assertEqual(stages.json()['chapters'],2)
+
     def test_approved_dish_cards_generate_reviewed_quiz_and_freeze_recipe(self):
         from io import BytesIO
         from PIL import Image
