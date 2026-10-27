@@ -91,10 +91,16 @@ function legacyText(text){
 }
 function chapterBody(p){
  if(p.kind!=='dish')return '<div class="body lesson-source">'+esc(legacyText(p.body))+'</div>'+(p.source?'<p class="muted">Источник: '+esc(p.source)+'</p>':'');
- return '<div class="lesson-tabs" role="tablist" aria-label="О блюде">'+['Теория','Состав','Подача','Аллергены'].map((name,i)=>'<button type="button" role="tab" id="lesson-tab-'+i+'" aria-controls="lesson-panel-'+i+'" aria-selected="'+(i===0)+'" data-action="lesson-tab" data-id="'+i+'">'+name+'</button>').join('')+'</div>'+
+ // Composition is the principal learning fact for menu cards. Open it first.
+ // Never infer ingredients from image, title, presentation or AI.
+ const ingredients=Array.isArray(p.ingredients)?p.ingredients.filter(x=>typeof x==='string'&&x.trim()):[];
+ return '<div class="lesson-tabs" role="tablist" aria-label="О блюде">'+['Теория','Состав','Подача','Аллергены'].map((name,i)=>
+   '<button type="button" role="tab" id="lesson-tab-'+i+'" aria-controls="lesson-panel-'+i+'" aria-selected="'+(i===1)+'" data-action="lesson-tab" data-id="'+i+'">'+name+'</button>').join('')+'</div>'+
  (p.has_photo?dishPhoto(p.dish_id,'wide'):'')+
- '<section role="tabpanel" id="lesson-panel-0" aria-labelledby="lesson-tab-0"><h2>О блюде</h2><div class="body lesson-source">'+esc(p.description||'Описание уточняется менеджером.')+'</div></section>'+
- '<section role="tabpanel" id="lesson-panel-1" aria-labelledby="lesson-tab-1" hidden><h2>Состав</h2><ul class="chapter-ingredients">'+(p.ingredients||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></section>'+
+ '<section role="tabpanel" id="lesson-panel-0" aria-labelledby="lesson-tab-0" hidden><h2>О блюде</h2><div class="body lesson-source">'+esc(p.description||'Описание уточняется менеджером.')+'</div></section>'+
+ '<section role="tabpanel" id="lesson-panel-1" aria-labelledby="lesson-tab-1"><h2>Состав</h2>'+
+ (ingredients.length?'<ul class="chapter-ingredients">'+ingredients.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':
+ '<p class="lesson-missing-composition" role="status">Состав пока не заполнен в утверждённой карточке. Не учи блюдо по фото: попроси менеджера проверить ТТК.</p>')+'</section>'+
  '<section role="tabpanel" id="lesson-panel-2" aria-labelledby="lesson-tab-2" hidden><h2>Подача и особенности</h2><div class="body lesson-source">'+esc(p.description||'Уточни подачу у руководителя.')+'</div></section>'+
  '<section role="tabpanel" id="lesson-panel-3" aria-labelledby="lesson-tab-3" hidden><h2>Аллергены</h2><p>'+esc(p.allergens||'Данные уточняются. Перед рекомендацией гостю проверь информацию у кухни.')+'</p></section>'+
  '<p class="muted chapter-source">Источник: '+esc(p.source)+(p.source_page?' · стр. '+p.source_page:'')+'</p>';

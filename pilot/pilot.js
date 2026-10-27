@@ -423,7 +423,7 @@ function coursePdfPanel(){
 async function generateCourseProposal(cid){
   $('#app').innerHTML='<h1>ИИ готовит программу</h1>'+
     '<section class="card"><h2>Материал сохранён</h2>'+
-    '<p role="status">По учебным главам создаются черновики вопросов и практических ситуаций. Итог обязательно проверит менеджер.</p>'+
+    '<p role="status">Большой курс обрабатывается пакетами до 16 глав, но остаётся одним черновиком. Перед публикацией менеджер проверит каждый вопрос.</p>'+
     btn('Вернуться к программам','nav','courses','secondary')+'</section>';
   try{
     const result=await api('learning/'+cid+'/generate','POST',{});
@@ -431,6 +431,7 @@ async function generateCourseProposal(cid){
     $('#app').innerHTML='<h1>Предложения готовы</h1><section class="card">'+
       '<p class="eyebrow">ЕЩЁ НЕ ОПУБЛИКОВАНО</p>'+
       '<h2>'+result.questions+' вопросов и '+result.cases+' практических кейсов</h2>'+
+      '<p class="muted">Глав обработано: '+result.chapters+'. Пакетов: '+result.batches+'.</p>'+
       '<p>Проверь вопросы, варианты, факты, источники и критерии кейсов. ИИ может ошибаться. Сотрудники ничего не увидят до утверждения.</p>'+
       (result.warnings?.length?'<p class="muted">Автопроверка: '+result.warnings.length+' предупреждений. Исправь их в редакторе.</p>':'')+
       '<div class="actions">'+btn('Проверить тест','edit',cid,'lime-action')+

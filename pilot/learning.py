@@ -213,6 +213,7 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             audit(c,u['id'],'learning:ai-proposals',cid)
         from question_quality import quality_issues
         return {'status':'draft','questions':len(questions),'cases':len(created),
+                'chapters':len(chapters),'batches':(len(chapters)+15)//16,
                 'course_id':cid,'case_ids':created,'warnings':quality_issues(questions),
                 'review_required':True}
 

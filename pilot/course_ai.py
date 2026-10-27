@@ -1,16 +1,21 @@
 """Manager-reviewed AI suggestions from approved MOJO PDF or dish chapters; never auto-publish."""
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 import httpx
 from fastapi import HTTPException
 from cases_api import AI_URL, PRIVATE_DATA, case_payload
 from questions import clean_question
 from question_quality import quality_issues
+from dish_lessons import MAX_DISHES_PER_COURSE
+
+AI_CHAPTERS_PER_BATCH = 16
+MAX_AI_BATCH_WORKERS = 3
 
 def dish_review_chapters(parts):
     """Use only published recipe-card facts as the AI source; never invent recipes."""
-    if not 1 <= len(parts) <= 16:
-        raise HTTPException(422, "Для ИИ создай курс из 1–16 утверждённых карточек блюд")
+    if not 1 <= len(parts) <= MAX_DISHES_PER_COURSE:
+        raise HTTPException(422, f"Для генерации нужен курс из 1–{MAX_DISHES_PER_COURSE} утверждённых карточек блюд")
     result=[]
     for part in parts:
         if part.get("kind") != "dish" or not part.get("ingredients"):
@@ -91,7 +96,8 @@ def validate_generated(raw, chapters):
         pass
     return final,prepared
 
-def generate_review_drafts(chapters):
+def _generate_one_batch(chapters):
+    """One provider call for at most 16 *source-verified* chapters."""
     source = excerpt_chapters(chapters)
     api_key=os.getenv("YANDEX_API_KEY","")
     folder=os.getenv("YANDEX_FOLDER_ID","")
@@ -171,6 +177,29 @@ def generate_review_drafts(chapters):
     except (ValueError,KeyError,IndexError,TypeError,AttributeError):
         raise HTTPException(502,"ИИ вернул ответ, не прошедший проверку структуры вопросов и кейсов. Материалы сохранены, вопросов нет.")
 
+
+
+def generate_review_drafts(chapters):
+    """Prepare one manager-reviewed draft from a long course without dropping chapters.
+
+    Batch boundaries are provider-request boundaries ONLY. They never create
+    separate courses, and no database writes happen until all batches succeed.
+    """
+    if not isinstance(chapters, list) or not 1 <= len(chapters) <= MAX_DISHES_PER_COURSE:
+        raise HTTPException(422, "Для генерации нужны от 1 до 80 проверенных глав")
+    batches = [chapters[i:i + AI_CHAPTERS_PER_BATCH]
+               for i in range(0, len(chapters), AI_CHAPTERS_PER_BATCH)]
+    if len(batches) == 1:
+        return _generate_one_batch(batches[0])
+    # Bound concurrent paid model calls and wait for the complete result before
+    # committing questions and case drafts in the calling API transaction.
+    with ThreadPoolExecutor(max_workers=min(MAX_AI_BATCH_WORKERS, len(batches))) as pool:
+        prepared = list(pool.map(_generate_one_batch, batches))
+    questions = [q for batch_questions, _ in prepared for q in batch_questions]
+    cases = [case for _, batch_cases in prepared for case in batch_cases]
+    if not 3 <= len(questions) <= 100:
+        raise HTTPException(502, "ИИ вернул неподходящее число вопросов: черновик не изменён")
+    return questions, cases
 
 def suggest_wine_cards(chapters):
     """Extract proposals only; manager confirmation is required to persist them."""
