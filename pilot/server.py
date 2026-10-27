@@ -400,6 +400,9 @@ def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/c
 @app.get('/pilot/learner.css')
 def learner_styles():return FileResponse(BASE/'learner.css',media_type='text/css')
 
+@app.get('/pilot/menu_assessments.js')
+def menu_assessment_script():return FileResponse(BASE/'menu_assessments.js',media_type='application/javascript')
+
 @app.get('/pilot/menu_cards.js')
 def menu_script():return FileResponse(BASE/'menu_cards.js',media_type='application/javascript')
 
