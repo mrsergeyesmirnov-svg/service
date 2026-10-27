@@ -253,6 +253,19 @@ CREATE TABLE IF NOT EXISTS onboarding_tracks (
  target_date DATE,
  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Editable manager overrides for the four seeded MOJO induction quests.
+-- Stable quest keys retain submitted trainee answers after wording changes.
+CREATE TABLE IF NOT EXISTS onboarding_quests (
+ restaurant TEXT NOT NULL,
+ quest_key TEXT NOT NULL,
+ title TEXT NOT NULL,
+ instruction TEXT NOT NULL,
+ prompt TEXT NOT NULL,
+ requires_review BOOLEAN NOT NULL,
+ updated_by BIGINT NOT NULL REFERENCES staff(id),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY(restaurant,quest_key)
+);
 CREATE TABLE IF NOT EXISTS onboarding_quest_attempts (
  staff_id BIGINT NOT NULL REFERENCES staff(id),
  quest_key TEXT NOT NULL,
