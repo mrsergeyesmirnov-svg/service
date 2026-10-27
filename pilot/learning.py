@@ -104,6 +104,20 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             return approved_card_questions(parts, r['id'])
         return r['questions']
 
+    def staged_menu_status(c, r, uid, parts):
+        """Reading a menu section is NOT completing its required control exam."""
+        mapped = bool(map_details(c, r['id']))
+        if not mapped or r['questions']:
+            return False, False
+        signature = r['reviewed_dish_signature']
+        if not signature or not parts:
+            return True, False
+        done = c.execute("""SELECT 1 FROM menu_assessment_attempts
+            WHERE staff_id=%s AND course_id=%s AND stage='control'
+              AND signature=%s AND passed LIMIT 1""",
+            (uid, r['id'], signature)).fetchone()
+        return True, bool(done)
+
     def progress(c, uid, cid):
         row = c.execute('SELECT chapter_ids FROM learning_progress WHERE staff_id=%s AND course_id=%s', (uid, cid)).fetchone()
         return row['chapter_ids'] if row else []
@@ -229,10 +243,12 @@ def make_learning_router(db, require, manager, scope, grade, audit):
             result = []
             for r in rows:
                 parts = course_chapters(c, r)
+                staged, control_passed = staged_menu_status(c, r, u['id'], parts)
                 result.append(dict(
                     id=r['id'], title=r['title'], category=category(r['title']),
                     chapters=len(parts), read=len(set(r['chapter_ids'] or []) & {p['id'] for p in parts}),
                     passed=r['passed'], best_score=r['best_score'], questions=len(course_questions(c, r, parts)),
+                    staged_menu=staged, control_passed=control_passed,
                     structured=bool(parts and parts[0].get('kind')=='dish'),
                     cover_dish_id=next((p['dish_id'] for p in parts if p.get('has_photo')), None)
                 ))
@@ -242,9 +258,12 @@ def make_learning_router(db, require, manager, scope, grade, audit):
     def detail(cid: int, request: Request):
         with db() as c:
             u = require(c, request); r = course(c, u, cid)
+            parts=course_chapters(c,r)
+            staged, control_passed=staged_menu_status(c,r,u['id'],parts)
             return dict(id=r['id'], title=r['title'], source=r['source'], pass_score=r['pass_score'],
-                        chapters=course_chapters(c,r), read=progress(c, u['id'], cid),
-                        questions=[public_question(q) for q in course_questions(c, r)],
+                        chapters=parts, read=progress(c, u['id'], cid),
+                        staged_menu=staged, control_passed=control_passed,
+                        questions=[public_question(q) for q in course_questions(c, r, parts)],
                         history=c.execute('SELECT id,score,passed,created_at FROM learning_attempts WHERE staff_id=%s AND course_id=%s ORDER BY id DESC', (u['id'], cid)).fetchall())
 
     @router.post('/{cid}/read')
