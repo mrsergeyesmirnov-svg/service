@@ -1,0 +1,129 @@
+/* MOJO Academy — one small visual layer for ALL roles.
+   No new framework, animations, layout engine, or changes to learning data. */
+:root{
+  --canvas:#F8FAF6;
+  --forest:#233F34;
+  --lime:#D5ED89;
+  --border:#E6EDE8;
+}
+
+/* Keep iPhone's native inertial vertical scrolling. No scroll-lock or fixed page height. */
+html{
+  -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth;
+  scroll-padding-bottom:calc(92px + env(safe-area-inset-bottom));
+}
+body{
+  overflow-x:clip;
+  -webkit-overflow-scrolling:touch;
+  background:var(--canvas);
+}
+main,#app{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+/* Remove the costly blurred layer on every scroll frame. */
+nav, .learner-ui nav{
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  background:#fff;
+}
+nav{
+  border-color:var(--border);
+  box-shadow:0 -2px 14px rgba(35,63,52,.045);
+}
+nav button.nav-item.active,
+.learner-ui nav button.nav-item.active{
+  background:#EEF4E8;
+  color:var(--forest);
+  box-shadow:none;
+}
+
+/* Restraint: one clear primary action, quiet secondary actions, consistent sizing. */
+.actions>button,
+.chapter-actions>button,
+.manager-course-actions button,
+.dish-controls button,
+.dish-switcher button,
+.workspace-head>button,
+form>button,
+.map-row button{
+  min-height:46px;
+  padding:11px 15px;
+  border-radius:13px;
+  font-size:14px;
+  font-weight:650;
+  line-height:1.35;
+  box-shadow:none;
+}
+button,
+.button{
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+button:active:not(:disabled),
+.button:active:not(:disabled){
+  opacity:.88;
+}
+button:disabled{opacity:.52}
+button.secondary,
+.actions>button.secondary,
+.manager-course-actions button.secondary{
+  background:#EFF3EA;
+  color:var(--forest);
+}
+.lime-action,
+button.lime-action,
+.actions>button.lime-action{
+  background:var(--forest);
+  color:white;
+}
+
+/* Course rows should read as content, not large call-to-action blocks. */
+.manager-course,
+.card{
+  border-color:var(--border);
+  box-shadow:none;
+}
+.manager-course{border-radius:18px}
+.manager-list>summary{
+  padding:3px 0;
+  min-height:54px;
+}
+.manager-course-actions .actions{gap:8px}
+.manager-more>summary{min-height:42px}
+input,textarea,select{
+  border-color:#d6e1d5;
+  background:#fff;
+  -webkit-appearance:none;
+  appearance:none;
+}
+input[type=checkbox],input[type=radio]{-webkit-appearance:auto;appearance:auto}
+input:focus,textarea:focus,select:focus{
+  border-color:#8aa478;
+}
+:focus-visible{
+  outline:2px solid #7f9f6d;
+  outline-offset:3px;
+}
+
+/* Short labels and compact responsive controls on narrow iPhones. */
+@media(max-width:600px){
+  body{font-size:15px}
+  main{padding-bottom:calc(126px + env(safe-area-inset-bottom))}
+  .learner-ui main{padding-bottom:calc(126px + env(safe-area-inset-bottom))}
+  .card{border-radius:19px}
+  .actions{gap:9px}
+  .actions>button{flex:1 1 135px;min-width:0;margin:0}
+  .manager-course-actions .actions>button{font-size:13px}
+  .lesson-stage{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .lesson-stage span{min-width:55px}
+  .filters,.lesson-tabs{
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+}
