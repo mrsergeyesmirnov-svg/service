@@ -77,3 +77,11 @@
  .onboard-team-row button{font-size:12px;padding:9px 12px}
  .onboard-level>label{margin-right:5px;padding:8px 9px;font-size:12px}
 }
+
+/* A small, familiar form instead of a separate admin panel. */
+.onboard-manager-edit{max-width:700px;margin:14px auto 24px}
+.onboard-quest-edit{padding:19px!important;margin-bottom:14px!important}
+.onboard-quest-edit h2{font-size:18px;margin:0 0 13px}
+.onboard-quest-edit label{display:block;font-size:13px;color:#415948;margin:12px 0}
+.onboard-quest-edit input:not([type=checkbox]),.onboard-quest-edit textarea{display:block;width:100%;font-size:16px;line-height:1.5;margin-top:6px;box-sizing:border-box}
+.onboard-quest-edit>button{margin:14px 0 0;width:100%;min-height:46px}
