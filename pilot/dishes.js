@@ -81,9 +81,25 @@ async function importDishMaterial(e){
  }catch(err){status.textContent="Импорт не завершён: "+(err.name==="AbortError"?"Превышено время ожидания":err.message)}
  finally{clearTimeout(timeout);button.disabled=false}
 }
+function dishVisibleOrder(){
+ const query=dishFilter.toLocaleLowerCase("ru");
+ const matches=dishCards.filter(c=>(c.title+" "+c.section+" "+c.ingredients.join(" ")).toLocaleLowerCase("ru").includes(query));
+ return matches.length?matches:dishCards;
+}
+function dishSwitchControls(id,editing=false){
+ const visible=dishVisibleOrder(),index=visible.findIndex(c=>c.id===id);
+ if(index<0)return "";
+ const before=visible[index-1],after=visible[index+1],action=editing?"dish-adjacent-edit":"dish-adjacent";
+ return '<div class="dish-switcher" aria-label="Навигация по карточкам">'+
+ (before?btn("← Предыдущая",action,before.id,"secondary"):'<span class="dish-switch-spacer"></span>')+
+ '<span class="dish-position">'+(index+1)+' из '+visible.length+'</span>'+
+ (after?btn("Следующая →",action,after.id,"secondary"):'<span class="dish-switch-spacer"></span>')+
+ '</div>';
+}
 async function dishDetail(id){
  const c=dishCards.find(x=>x.id===id);if(!c)return;
  $("#app").innerHTML=btn("← Каталог","dish-list","","secondary")+
+ dishSwitchControls(id)+
  '<article class="card dish-detail">'+dishPhoto(c.id,"wide")+
  '<span class="dish-kicker">'+esc(c.section)+' · стр. '+esc(c.source_page||"—")+'</span>'+
  '<h1>'+esc(c.title)+'</h1><h2>Ингредиенты</h2><ul>'+
@@ -94,23 +110,26 @@ async function dishDetail(id){
  (dishAdmin()?'<div class="dish-controls"><p class="muted">'+(c.warning?"Проверить: "+esc(c.warning):"Проверь по актуальной ТТК перед публикацией.")+'</p>'+
  btn("Редактировать","dish-edit",id,"secondary")+
  (!c.published?btn("Материал проверен — опубликовать","dish-publish",id):"")+
- btn("Удалить карточку","dish-delete",id,"secondary")+'</div>':"")+'</article>';
+ btn("Удалить карточку","dish-delete",id,"secondary")+'</div>':"")+'</article>'+dishSwitchControls(id);
  await showDishPhotos();
 }
 async function dishEditor(id){
  const c=id?dishCards.find(x=>x.id===id):{title:"",section:"Основное меню",ingredients:[],description:""};
  if(!c)return;
  $("#app").innerHTML=btn("← Карточки","dish-list","","secondary")+
+ (id?dishSwitchControls(id,true):"")+
  '<h1>'+(id?"Редактировать блюдо":"Новое блюдо")+'</h1><form class="card dish-edit-form" id="dish-edit-form">'+
  (id?dishPhoto(id,"wide"):"")+
  '<label>Название<input name="title" maxlength="180" required value="'+esc(c.title)+'"></label>'+
  '<label>Раздел меню<input name="section" maxlength="100" required value="'+esc(c.section)+'"></label>'+
  '<label>Ингредиенты (по одному на строку)<textarea name="ingredients" rows="9">'+esc(c.ingredients.join("\n"))+'</textarea></label>'+
- '<label>Описание, особенности, подача<textarea name="description" rows="7" maxlength="4500">'+esc(c.description)+'</textarea></label>'+
+ '<label>Описание, особенности, подача (необязательно)<textarea name="description" rows="7" maxlength="4500">'+esc(c.description)+'</textarea></label>'+
  '<label>Аллергены по проверенной ТТК<textarea name="allergens" rows="3" maxlength="1200">'+esc(c.allergens||"")+'</textarea></label>'+
  '<label>'+(id?"Заменить фото":"Добавить фото")+' (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>'+
  '<p class="muted">После изменения опубликованная карточка станет черновиком до проверки менеджера.</p>'+
  '<button type="submit">Сохранить карточку</button></form>';
+ $("#dish-edit-form").addEventListener("input",()=>{$("#dish-edit-form").dataset.dirty="true"});
+ $("#dish-edit-form").addEventListener("change",()=>{$("#dish-edit-form").dataset.dirty="true"});
  $("#dish-edit-form").onsubmit=async e=>{
   e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;
   const form=new FormData(e.target);
@@ -126,7 +145,9 @@ async function dishEditor(id){
     const response=await r.json();if(!r.ok)throw Error(response.detail||"Не удалось загрузить фото");
     if(dishImageUrls.has(target)){URL.revokeObjectURL(dishImageUrls.get(target));dishImageUrls.delete(target)}
    }
-   await dishesPage();
+   dishCards=await api("dishes");
+   if(dishCards.some(c=>c.id===target))await dishDetail(target);
+   else await dishesPage();
   }catch(err){error(err)}finally{b.disabled=false}
  };
  await showDishPhotos();
@@ -134,7 +155,7 @@ async function dishEditor(id){
 document.addEventListener("click",async e=>{
  const b=e.target.closest("[data-action]");if(!b)return;
  const {action,id}=b.dataset;
- if(!["dish-open","dish-list","dish-template","dish-next","dish-prev","dish-detail","dish-edit","dish-create","dish-delete","dish-publish"].includes(action))return;
+ if(!["dish-open","dish-list","dish-template","dish-next","dish-prev","dish-detail","dish-edit","dish-create","dish-delete","dish-publish","dish-adjacent","dish-adjacent-edit"].includes(action))return;
  e.preventDefault();b.disabled=true;
  try{
   if(action==="dish-template")await downloadDishTemplate();
@@ -143,6 +164,12 @@ document.addEventListener("click",async e=>{
   if(action==="dish-next"){dishPageIndex++;paintDishList()}
   if(action==="dish-prev"){dishPageIndex=Math.max(0,dishPageIndex-1);paintDishList()}
   if(action==="dish-detail")await dishDetail(Number(id));
+  if(action==="dish-adjacent")await dishDetail(Number(id));
+  if(action==="dish-adjacent-edit"){
+   const form=document.querySelector("#dish-edit-form");
+   if(form?.dataset.dirty==="true"&&!confirm("Есть несохранённые изменения. Перейти к другой карточке?"))return;
+   await dishEditor(Number(id));
+  }
   if(action==="dish-edit")await dishEditor(Number(id));
   if(action==="dish-create")await dishEditor(null);
   if(action==="dish-delete"&&confirm("Убрать блюдо из Академии? Данные сохранятся в архиве.")){await api("dishes/"+id,"DELETE");await dishesPage()}

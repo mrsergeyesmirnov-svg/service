@@ -167,8 +167,8 @@ def attach(db,require,manager,scope,audit):
         if data.get("reviewed") is not True: raise HTTPException(422,"Подтвердите проверку по актуальной ТТК")
         with db() as c:
             u=require(c,request);manager(u);row=find(c,u,cid);scope(u,row["restaurant"])
-            if not row["ingredients"] or not row["description"] or row["photo"] is None:
-                raise HTTPException(409,"Для публикации нужны состав, описание и фото")
+            if not row["ingredients"] or row["photo"] is None:
+                raise HTTPException(409,"Для публикации нужны подтверждённый состав и фото")
             unknown=("не подтвержден","неизвест","не указан","нет данных","не установлен","уточня")
             if row["import_method"] in ("pptx","pdf_ai") and (
                 not row["allergens"] or
