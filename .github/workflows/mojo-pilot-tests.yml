@@ -46,6 +46,7 @@ jobs:
           node --check pilot/menu_cards.js
           node --check pilot/menu_assessments.js
           node --check pilot/events.js
+          node --check pilot/onboarding.js
           (cd pilot && node test_admin_nav.cjs)
           (cd pilot && node test_dish_nav.cjs)
           (cd pilot && node test_mobile_scroll.cjs)
@@ -56,4 +57,4 @@ jobs:
           bash -n pilot/configure-ai.sh
           bash -n pilot/update-bot-only.sh
       - name: Unit and isolated PostgreSQL integration tests
-        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments
+        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_onboarding

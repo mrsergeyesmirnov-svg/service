@@ -18,6 +18,7 @@ from wine_cards import make_router as make_wine_cards_router
 from menu_cards import make_router as make_menu_cards_router
 from menu_assessments import make_router as make_menu_assessments_router
 from menu_assessments import menu_exam_questions
+from onboarding import make_onboarding_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
 
@@ -111,6 +112,7 @@ app.include_router(make_menu_assessments_router(lambda: db(), require, manager, 
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
+app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
 
 @app.get('/api/health')
 def health():
@@ -438,6 +440,12 @@ def css():return FileResponse(BASE/'pilot.css',media_type='text/css')
 def learning_script():return FileResponse(BASE/'learning.js',media_type='application/javascript')
 @app.get('/pilot/learning.css')
 def learning_styles():return FileResponse(BASE/'learning.css',media_type='text/css')
+
+@app.get('/pilot/onboarding.js')
+def onboarding_script():return FileResponse(BASE/'onboarding.js',media_type='application/javascript')
+
+@app.get('/pilot/onboarding.css')
+def onboarding_styles():return FileResponse(BASE/'onboarding.css',media_type='text/css')
 
 @app.get('/pilot/mobile_polish.css')
 def mobile_polish_styles():return FileResponse(BASE/'mobile_polish.css',media_type='text/css')

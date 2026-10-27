@@ -1,0 +1,87 @@
+/* Small extension of the existing MOJO white/forest design.
+   No overlay, scroll lock, fixed onboarding footer or extra navigation tabs. */
+.onboard-wrap{max-width:700px;margin:0 auto 28px}
+.onboard-back{margin:4px 0 14px}
+.onboard-back>button{padding:8px 14px;font-size:13px}
+.onboard-stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0 24px}
+.onboard-stages span{display:grid;place-items:center;text-align:center;min-height:38px;padding:8px 4px;border:1px solid #E6EDE8;border-radius:12px;background:#F1F4EF;font-size:11px;font-weight:700;line-height:1.2;color:#738578}
+.onboard-stages .complete{background:#EFF5E5;color:#416343}
+.onboard-stages .current{background:#D5ED89;color:#233F34;border-color:#D5ED89}
+.onboard-title{margin:18px 0 24px}
+.onboard-title h1{font-size:26px;margin:13px 0}
+.onboard-title p{color:#566E5E;font-size:15px;line-height:1.55;max-width:54ch}
+.onboard-home{padding:22px!important;background:#233F34!important;color:#fff!important;border-color:#233F34!important}
+.onboard-home .eyebrow{color:#D5ED89}
+.onboard-home h2{color:#fff;font-size:24px;line-height:1.25;margin:12px 0 8px}
+.onboard-home p{color:#E3EAE0;line-height:1.5;margin:0 0 14px}
+.onboard-home-progress{font-size:12px;color:#D5ED89}
+.onboard-home>button.lime-action{background:#D5ED89!important;color:#233F34!important;margin-top:16px;width:100%;min-height:48px}
+.onboard-welcome{padding:20px!important;background:#F1F6EB!important;border-color:#E4EDE2!important}
+.onboard-welcome strong{color:#233F34;font-size:16px}
+.onboard-welcome p{margin:9px 0 0;font-size:14px;line-height:1.6}
+.onboard-section-title{font-size:18px;margin:24px 0 14px}
+.onboard-quest{padding:0!important;overflow:hidden;border-radius:17px!important;margin-bottom:10px!important}
+.onboard-quest>summary{list-style:none;display:flex;gap:12px;align-items:center;min-height:76px;cursor:pointer;padding:16px}
+.onboard-quest>summary::-webkit-details-marker{display:none}
+.onboard-quest-icon{height:32px;width:32px;border-radius:10px;background:#EFF4E8;display:grid;place-items:center;font-size:17px;color:#456A46;flex-shrink:0}
+.onboard-quest-name{display:grid;gap:5px;min-width:0;flex:1;font-weight:700;color:#233F34;font-size:14px;line-height:1.3}
+.ob-status{display:inline-block;border-radius:8px;font-size:11px;line-height:1.3;font-weight:650}
+.ob-status.todo{color:#718274}
+.ob-status.pending{color:#8F652A}
+.ob-status.done{color:#386A42}
+.ob-status.revise{color:#A35842}
+.onboard-chevron{font-size:23px;color:#8DA293;font-weight:400;line-height:1}
+.onboard-quest-body{border-top:1px solid #EDF0EA;padding:0 17px 18px}
+.onboard-quest-body p{font-size:14px;line-height:1.6}
+.onboard-quest textarea,.onboard-feedback textarea,.onboard-manager-quest textarea{font-size:16px;line-height:1.55;min-height:95px}
+.onboard-quest form>button,.onboard-feedback form>button,.onboard-self form>button,.onboard-finish{display:block;width:100%;min-height:48px;border-radius:13px}
+.onboard-feedback{margin-top:20px}
+.onboard-feedback h2{font-size:20px}
+.onboard-feedback select{min-height:46px;font-size:16px}
+.onboard-hint{font-size:13px;color:#718274;padding:4px 4px 16px}
+.ob-review-comment{padding:12px;border-radius:12px;background:#FFF5E8;color:#82542B}
+.onboard-level{border:0;padding:0;margin:18px 0 24px;min-width:0}
+.onboard-level legend{font-size:15px;font-weight:700;margin-bottom:11px}
+.onboard-level>label{display:inline-flex;align-items:center;gap:6px;margin:0 10px 8px 0;background:#F3F6F0;border:1px solid #E6EDE8;border-radius:22px;padding:9px 11px;font-size:13px;white-space:nowrap}
+.onboard-level input{margin:0!important;accent-color:#233F34}
+.onboard-topic{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:18px!important;margin:11px 0!important}
+.onboard-topic strong{color:#233F34;font-size:16px}
+.onboard-topic p{margin:0;font-size:13px}
+.onboard-topic button{margin:4px 0 0;min-height:44px;width:100%}
+.onboard-unmapped{padding:11px 13px;background:#FFF5E8;color:#8A5D24;border-radius:10px;font-size:13px;line-height:1.45}
+.onboard-next{margin:18px 0}
+.onboard-next p{font-size:13px;color:#6A7B6F}
+.onboard-next button{width:100%}
+.onboard-done{border:1px solid #D7E6D4!important;background:#F4F8F1!important}
+.onboard-done h1{font-size:32px}
+.onboard-done h2{font-size:20px}
+.onboard-done>button{width:100%;margin-top:12px}
+.onboard-question{margin-top:16px!important}
+.onboard-question legend{font-weight:700;padding:0 4px;font-size:15px;line-height:1.35}
+.onboard-question label.option{margin:8px 0}
+.onboard-finish{margin:20px 0}
+.onboard-team-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:16px 18px!important}
+.onboard-team-row strong{font-size:15px}
+.onboard-team-row p{margin:4px 0 0;font-size:12px}
+.onboard-team-row button{margin:0;flex:0 0 auto}
+.onboard-manager-quest{padding:18px!important}
+.onboard-manager-quest>strong{display:block;margin-bottom:5px}
+.onboard-manager-quest>p{font-size:14px;line-height:1.5;white-space:pre-wrap}
+.onboard-manager-quest form .actions{gap:8px}
+.onboard-manager-quest form button{margin:0;flex:1 1 140px;min-height:46px}
+.ob-check{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.45}
+.ob-check input{width:auto;margin:5px 0 0;accent-color:#233F34}
+@media(max-width:430px){
+ .onboard-title h1{font-size:24px}
+ .onboard-team-row{align-items:flex-start}
+ .onboard-team-row button{font-size:12px;padding:9px 12px}
+ .onboard-level>label{margin-right:5px;padding:8px 9px;font-size:12px}
+}
+
+/* A small, familiar form instead of a separate admin panel. */
+.onboard-manager-edit{max-width:700px;margin:14px auto 24px}
+.onboard-quest-edit{padding:19px!important;margin-bottom:14px!important}
+.onboard-quest-edit h2{font-size:18px;margin:0 0 13px}
+.onboard-quest-edit label{display:block;font-size:13px;color:#415948;margin:12px 0}
+.onboard-quest-edit input:not([type=checkbox]),.onboard-quest-edit textarea{display:block;width:100%;font-size:16px;line-height:1.5;margin-top:6px;box-sizing:border-box}
+.onboard-quest-edit>button{margin:14px 0 0;width:100%;min-height:46px}

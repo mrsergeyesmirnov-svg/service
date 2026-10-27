@@ -26,6 +26,11 @@ function courseCard(c){
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
+ if(user?.role==='trainee')learningCourses.sort((a,b)=>Number(b.category==='service')-Number(a.category==='service'));
+ let induction=null;
+ if(user?.role==='trainee'&&page!=='catalog'){
+  try{induction=await api('onboarding/me')}catch(err){console.warn('Onboarding temporarily unavailable:',err.message)}
+ }
  if(page==='catalog'){
   courseFilter='all';courseQuery='';
   root.innerHTML='<h1>Программа обучения</h1><label class="course-search"><span>Поиск по курсам</span><input id="course-search" type="search" placeholder="Название курса" autocomplete="off"></label><div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div><div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Пока нет опубликованных курсов.</div>')+'</div><div class="practice-entry">'+btn('Практика →','nav','cases','secondary')+'</div>'+(isManager()?btn('Управление Академией','open-manager','','secondary'):'');
@@ -39,8 +44,9 @@ async function learningPage(page){
  const event=events.filter(e=>e.published&&!e.cancelled&&new Date(e.starts_at)>new Date()).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at))[0];
  const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0);
  const urgent=pending[0],next=urgent||learningCourses.find(c=>!learningDone(c));
+ const showInduction=induction?.available&&induction.stage!=='main';
  root.innerHTML='<div class="learner-greeting"><span class="learner-avatar">'+esc(user.name.slice(0,1))+'</span><div><h1>Привет, '+esc(user.name)+'</h1><p>'+esc(roles[user.role])+' · '+esc(user.restaurant)+'</p></div>'+'<button class="greeting-events" data-action="nav" data-id="events" aria-label="Мероприятия">'+navSvg('events')+'</button>'+'</div>'+
- '<section class="card continue-card"><small>Мой путь в MOJO</small><h2>'+esc(next?.title||(total?'Программа пройдена':'Твоя программа обучения'))+'</h2><p>'+(urgent?'До '+esc(dateLabel(urgent.deadline)):total?read+' из '+total+' глав прочитано':'Опубликованные курсы появятся здесь.')+'</p><progress max="'+(total||1)+'" value="'+read+'" aria-label="Прочитано '+read+' из '+total+' глав"></progress>'+ (next?btn('Продолжить обучение →',urgent?'lesson':'study',next.id):btn('Открыть программу →','nav','catalog'))+'</section>'+
+ (showInduction?onboardingHomeCard(induction):'<section class="card continue-card"><small>Мой путь в MOJO</small><h2>'+esc(next?.title||(total?'Программа пройдена':'Твоя программа обучения'))+'</h2><p>'+(urgent?'До '+esc(dateLabel(urgent.deadline)):total?read+' из '+total+' глав прочитано':'Опубликованные курсы появятся здесь.')+'</p><progress max="'+(total||1)+'" value="'+read+'" aria-label="Прочитано '+read+' из '+total+' глав"></progress>'+ (next?btn('Продолжить обучение →',urgent?'lesson':'study',next.id):btn('Открыть программу →','nav','catalog'))+'</section>')+
  '<div class="learner-summary"><button class="card event-summary" data-action="nav" data-id="events">'+navSvg('events')+'<small>Ближайшее мероприятие</small><strong>'+esc(event?eventDate(event.starts_at):eventError?'Не удалось загрузить':'Пока не запланировано')+'</strong><span>'+esc(event?.title||(eventError?'Открыть календарь и повторить':'Посмотреть календарь'))+'</span></button><button class="card progress-summary" data-action="nav" data-id="catalog"><small>Изучено глав</small><strong>'+read+'<span> / '+total+'</span></strong><span>Продолжить программу ›</span></button></div>'+
  '<div class="row learner-section"><h2>Мои курсы</h2>'+btn('Все →','nav','catalog','secondary')+'</div>'+
  (learningCourses.slice(0,4).map(courseCard).join('')||'<p class="muted">Менеджер ещё не опубликовал материалы.</p>')+
