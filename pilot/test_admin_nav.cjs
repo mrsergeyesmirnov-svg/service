@@ -61,6 +61,9 @@ async function main() {
   assert.match(mainCode, /function dishCourseForm\(\)/);
   assert.match(mainCode, /data-action="dish-course-new"|btn\('Собрать курс из карточек блюд','dish-course-new'/);
   assert.match(mainCode, /async function publishReviewScreen\(c\)/);
+  assert.match(mainCode, /async function api\(path,method='GET',body,timeoutMs=45000\)/);
+  assert.match(mainCode, /generate','POST',\{\},140000/);
+  assert.match(mainCode, /Добавить вопросы вручную/);
   assert.match(code, /await generateCourseProposal\(cid\)/);
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
