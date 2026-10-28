@@ -34,3 +34,5 @@
 .journey-next .journey-steps{color:#5e7566}
 .journey-next .lime-action{background:#233f34;color:#fff}
 .journey-next button.secondary{background:#eaf0e3;color:#233f34}
+
+.menu-card-photos .dish-photo{width:100%;aspect-ratio:4/3;max-height:260px;border-radius:16px;overflow:hidden;margin:0 0 14px}.menu-card-photos img{width:100%;height:100%;object-fit:contain}

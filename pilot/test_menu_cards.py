@@ -25,6 +25,17 @@ def dish(name, components, index):
 
 
 class MenuCardUnit(unittest.TestCase):
+    def test_photos_preserve_progress_and_cover_reverse_variants(self):
+        a=dish("A",["Рис","Нори"],1)
+        old=menu_pairs([a])
+        a["has_photo"]=True
+        b=dict(dish("B",["Нори","Рис"],2),has_photo=True)
+        cards=menu_pairs([a,b])
+        self.assertEqual(cards[0]["photos"],[1])
+        self.assertEqual(cards[-1]["photos"],[1,2])
+        self.assertEqual(cards[0]["id"],old[0]["id"])
+        self.assertEqual(old[0]["photos"],[])
+
     def test_requires_real_multi_ingredient_approved_dish(self):
         cards = menu_pairs([
             dish("A", ["Лосось","Рис"],1),
