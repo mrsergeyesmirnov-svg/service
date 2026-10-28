@@ -40,7 +40,7 @@ def menu_pairs(chapters):
             "id": _key("menu-forward", [ident, name, *ingredients]),
             "direction": "forward", "prompt": name,
             "answer": [["Ингредиент", x] for x in ingredients],
-            "source": source
+            "source": source, "photos": [c["dish_id"]] if c.get("has_photo") and c.get("dish_id") else []
         })
         # Different dishes may share the exact same ingredient set.
         # Never grade a reverse card as if it had only one valid title.
@@ -48,8 +48,10 @@ def menu_pairs(chapters):
         reverse_id = _key("menu-reverse", normalized)
         group = reverse.setdefault(reverse_id, {
             "id": reverse_id, "direction": "reverse",
-            "prompt": " · ".join(ingredients), "answer": [], "sources": []
+            "prompt": " · ".join(ingredients), "answer": [], "sources": [], "photos": []
         })
+        if c.get("has_photo") and c.get("dish_id") and c["dish_id"] not in group["photos"]:
+            group["photos"].append(c["dish_id"])
         group["answer"].append(["Название", name])
         if source not in group["sources"]:
             group["sources"].append(source)

@@ -38,6 +38,7 @@ function renderMenuPractice(){
   '<progress max="'+all.length+'" value="'+known+'" aria-label="Изучено карточек '+known+' из '+all.length+'"></progress>'+
   '<div class="wine-caption">'+direction+'</div>'+
   '<button type="button" class="wine-flip-card" data-action="menu-flip" aria-expanded="'+menuFlipped+'">'+
+  '<div class="menu-card-photos">'+(pair.photos||[]).map(id=>dishPhoto(id,'wide')).join('')+'</div>'+
   '<span class="wine-card-hint">'+(menuFlipped?'Ответ':'Вспомни без подсказок')+'</span>'+
   (menuFlipped?facts:'<div class="wine-question">'+esc(pair.prompt)+'</div>')+
   '<span class="wine-card-foot">'+(menuFlipped?'Скрыть ответ':'Показать ответ ↻')+'</span></button>'+
@@ -48,6 +49,7 @@ function renderMenuPractice(){
   '<div class="actions wine-leave">'+btn('К уроку','menu-return','','secondary')+
   btn('К тесту','menu-continue','','secondary')+'</div>'+
   '<p role="status" id="menu-status" class="muted"></p>';
+ void showDishPhotos();
  window.scrollTo(0,0);
 }
 async function rateMenu(rating){
