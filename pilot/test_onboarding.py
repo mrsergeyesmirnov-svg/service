@@ -77,9 +77,6 @@ class TwoDayJourney(unittest.TestCase):
         for key in ("team","place","allergens","greeting"):
             r=self.post("quests/"+key+"/submit",{"answer":"Учусь вместе с командой."})
             self.assertEqual(r.status_code,200,r.text)
-        for key in ("allergens","greeting"):
-            r=self.post("quests/"+key+"/review",{"staff_id":101,"decision":"approve"},999)
-            self.assertEqual(r.status_code,200,r.text)
         final=self.post("day1/feedback",{"rating":5,"clarity":4,"comment":"Спасибо"})
         self.assertEqual(final.status_code,200,final.text)
 
@@ -107,10 +104,11 @@ class TwoDayJourney(unittest.TestCase):
         self.assertEqual(refreshed["status"],"done")
 
         flip=dict(change,review=True)
-        self.assertEqual(self.edit("team",flip).status_code,409)
+        self.assertEqual(self.edit("team",flip).status_code,200)
+        self.assertFalse(self.get("me").json()["quests"][0]["review"])
         critical={"title":"Аллергены","instruction":"Уточни безопасный порядок у менеджера.",
                   "prompt":"Что ты сделал?","review":False}
-        self.assertEqual(self.edit("allergens",critical).status_code,422)
+        self.assertEqual(self.edit("allergens",critical).status_code,200)
 
         # A local manager cannot see or edit the MOJO restaurant's attempts.
         self.assertEqual(self.get("team/101",103).status_code,403)
@@ -118,38 +116,23 @@ class TwoDayJourney(unittest.TestCase):
         self.assertEqual(other.status_code,200)
         self.assertNotEqual(other.json()["quests"][0]["title"],change["title"])
 
-    def test_day1_requires_manager_confirmation_and_feedback(self):
-        initial=self.get("me")
-        self.assertEqual(initial.json()["stage"],"day1")
-        self.assertEqual(self.post("self-assessment",{"levels":{
-             "service":"know","menu":"know","allergens":"know"}}).status_code,409)
-        self.assertEqual(self.post("quests/team/submit",{"answer":"  "}).status_code,422)
+    def test_day1_self_completion_and_friendly_reflection(self):
+        payload={"reflection":{"day":"Хорошо","team":"Команда зала","continue":"no"}}
+        self.assertEqual(self.post("day1/feedback",payload).status_code,409)
         for key in ("team","place","allergens","greeting"):
-            result=self.post("quests/"+key+"/submit",{"answer":"Выполнил тренировку."})
-            self.assertEqual(result.status_code,200,result.text)
-        self.assertEqual(self.post("day1/feedback",{"rating":5,"clarity":5}).status_code,409)
-        self.assertEqual(self.post("quests/allergens/review",{
-            "staff_id":101,"decision":"approve"},103).status_code,403)
-        self.assertEqual(self.post("quests/allergens/review",{
-            "staff_id":101,"decision":"revise"},999).status_code,422)
-        returned=self.post("quests/allergens/review",{
-            "staff_id":101,"decision":"revise","comment":"Уточни стандарт у менеджера"},999)
-        self.assertEqual(returned.status_code,200)
-        self.assertEqual(self.get("me").json()["quests"][2]["status"],"revise")
-        self.assertEqual(self.post("quests/allergens/submit",{
-            "answer":"Теперь понимаю порядок."}).json()["status"],"pending")
-        for key in ("allergens","greeting"):
-            res=self.post("quests/"+key+"/review",{
-               "staff_id":101,"decision":"approve"},999)
-            self.assertEqual(res.status_code,200,res.text)
-        result=self.post("day1/feedback",{"rating":5,"clarity":4,"comment":""})
+            r=self.post("quests/"+key+"/submit",{"answer":"Выполнено"})
+            self.assertEqual(r.json()["status"],"done")
+        with self.connect() as c:
+            c.execute("UPDATE onboarding_quest_attempts SET status='pending' WHERE staff_id=101 AND quest_key='allergens'")
+        self.assertTrue(all(q["status"]=="done" and not q["review"] for q in self.get("me").json()["quests"]))
+        result=self.post("day1/feedback",payload)
         self.assertEqual(result.status_code,200,result.text)
         self.assertEqual(self.get("me").json()["stage"],"day2")
-        self.assertTrue(self.post("day1/feedback",{"rating":5,"clarity":4}).json()["duplicate"])
-        self.assertEqual(self.post("quests/team/submit",{"answer":"Change answer"}).status_code,409)
-        team=self.get("team/101",999).json()
-        self.assertEqual(team["feedback"]["clarity"],4)
+        feedback=self.get("team/101",999).json()["feedback"]
+        self.assertEqual(feedback["reflection"],payload["reflection"])
+        self.assertIsNone(feedback["rating"])
         self.assertEqual(self.get("team/101",103).status_code,403)
+        self.assertTrue(self.post("day1/feedback",payload).json()["duplicate"])
 
     def test_day2_reuses_manager_approved_courses_no_auto_admission(self):
         self.complete_day1()

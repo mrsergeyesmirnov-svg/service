@@ -10,7 +10,7 @@ let onboardManagerId = null;
 function onboardingHomeCard(s){
  if(!s?.available)return '';
  const stage=s.stage;
- const title=stage==='day1'?'День 1 · Знакомство':stage==='day2'?'День 2 · Проверка знаний':'Адаптация пройдена';
+ const title=stage==='day1'?'День 1 · Знакомство':stage==='day2'?'Оценка знаний':'Адаптация пройдена';
  const sub=stage==='day1'?'Знакомство, небольшие задания и отзыв о первом дне.':
            stage==='day2'?'Самооценка, короткие проверки и темы для повторения.':
            'Основная программа открыта. Учебные материалы остаются доступны.';
@@ -29,7 +29,7 @@ const obStatus={
 };
 function obStages(stage){
  return '<div class="onboard-stages" aria-label="Этапы адаптации">'+
- ['День 1','День 2','Программа'].map((label,i)=>{
+ ['Знакомство','Оценка знаний','Программа'].map((label,i)=>{
   const done=(i===0&&stage!=='day1')||(i===1&&stage==='main');
   const active=(i===0&&stage==='day1')||(i===1&&stage==='day2')||(i===2&&stage==='main');
   return '<span class="'+(done?'complete':active?'current':'')+'">'+esc(label)+(done?' ✓':'')+'</span>';
@@ -61,14 +61,9 @@ function obDayOne(s){
   '<div class="card onboard-welcome"><strong>Как это работает</strong><p>Выполняй небольшие задания в зале, записывай ответы и спрашивай менеджера, если что-то непонятно. Не обслуживай гостей самостоятельно без допуска.</p></div>'+
   '<h2 class="onboard-section-title">Твои задания</h2>'+
   '<div class="onboard-task-list">'+s.quests.map(obQuestMarkup).join('')+'</div>'+
-  (all?'<section class="card onboard-feedback"><h2>Как прошёл первый день?</h2>'+
-     '<p>Спасибо за выполненные задания. Оставь короткий отзыв — после него откроется второй день.</p>'+
-     '<form data-onboard-form="feedback">'+
-     '<label>Как прошёл день? <select name="rating" required>'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===5?'selected':'')+'>'+n+' из 5</option>').join('')+'</select></label>'+
-     '<label>Насколько понятны инструкции? <select name="clarity" required>'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===5?'selected':'')+'>'+n+' из 5</option>').join('')+'</select></label>'+
-     '<label>Что можно улучшить? (необязательно)<textarea name="comment" maxlength="1000" rows="3"></textarea></label>'+
-     '<button type="submit" class="lime-action">Завершить первый день →</button></form></section>':
-     '<p class="onboard-hint">Когда менеджер подтвердит практические задания, здесь появится короткий отзыв о первом дне.</p>');
+  (all?'<section class="card onboard-feedback">'+btn('Как прошёл мой первый день?','onboard-reflection','','lime-action')+'</section>':
+     '<p class="onboard-hint">Выполни квесты, а затем расскажи, как прошёл твой день.</p>');
+
 }
 function obSelfAssessment(s){
  return '<section class="card onboard-self"><h2>С чего начнём?</h2>'+
@@ -81,9 +76,11 @@ function obSelfAssessment(s){
   '<button type="submit" class="lime-action">Сохранить самооценку</button></form></section>';
 }
 function obDayTwo(s){
+ const service=s.topics.find(t=>t.key==='service');
+ if(service&&!service.diagnosed)return '<section class="card"><h1>Проверим знания сервиса</h1><p>Это поможет понять, что ты уже знаешь и что стоит изучить. Это не экзамен и не допуск к смене.</p>'+ (service.course_id?btn('Проверить свои знания сервиса','onboard-diagnostic','service','lime-action'):'<p>Курс по стандартам сервиса пока не подготовлен. Твой отзыв сохранён.</p>')+'</section>';
  const levels=s.topics.every(t=>!!t.level);
  const all=s.topics.every(t=>t.diagnosed);
- return '<div class="onboard-title"><span class="eyebrow">ВТОРОЙ ДЕНЬ</span><h1>Проверим, что уже знаешь</h1>'+
+ return '<div class="onboard-title"><span class="eyebrow">ОЦЕНКА ЗНАНИЙ</span><h1>Проверим, что уже знаешь</h1>'+
   '<p>Сначала самооценка, затем короткие проверки по утверждённым материалам. При ошибках подскажем, какую тему повторить.</p></div>'+
   (!levels?obSelfAssessment(s):'<section class="card"><h2>Твои темы</h2><p class="muted">Самооценка сохранена. Чтобы завершить диагностику, ответь на вопросы по каждой теме — даже если отметил «Знаю».</p></section>')+
   (levels?s.topics.map(t=>'<article class="card onboard-topic"><div><strong>'+esc(t.title)+'</strong>'+
@@ -184,7 +181,7 @@ async function onboardingTeamDetail(staffId){
  '<div class="actions"><button name="decision" value="approve" type="submit" class="lime-action">Подтвердить</button>'+
  '<button name="decision" value="revise" type="submit" class="secondary">Вернуть</button></div></form>':'')+
  '</article>').join('')+
- (data.feedback?'<section class="card"><h2>Отзыв первого дня</h2><p>День: '+data.feedback.rating+'/5 · Понятность: '+data.feedback.clarity+'/5</p>'+
+ (data.feedback?'<section class="card"><h2>Отзыв первого дня</h2><p>'+ (data.feedback.reflection?esc(data.feedback.reflection.day)+'</p><p>'+esc(data.feedback.reflection.team)+'</p><p>Продолжить: '+esc(({yes:'Да',unsure:'Пока присматриваюсь',no:'Нет'})[data.feedback.reflection.continue]):'День: '+data.feedback.rating+'/5 · Понятность: '+data.feedback.clarity+'/5')+'</p>'+
  '<p>'+esc(data.feedback.comment||'Без комментария')+'</p></section>':'')+
  '<section class="card"><h2>Диагностика второго дня</h2>'+
  data.topics.map(t=>'<p>'+esc(t.title)+': '+esc(({know:'знаю',partial:'частично',new:'не знаю'})[t.level]||'самооценки нет')+
@@ -199,9 +196,6 @@ async function onboardingQuestsManagerPage(){
    '<label>Название задания<input name="title" maxlength="140" required value="'+esc(q.title)+'"></label>'+
    '<label>Что должен сделать стажёр<textarea name="instruction" maxlength="1200" rows="4" required>'+esc(q.instruction)+'</textarea></label>'+
    '<label>Вопрос для короткого ответа<input name="prompt" maxlength="220" required value="'+esc(q.prompt)+'"></label>'+
-   '<label class="ob-check"><input type="checkbox" name="review" '+(q.review?'checked':'')+
-     (['allergens','greeting'].includes(q.key)?' disabled':'')+'> Требуется подтверждение менеджера</label>'+
-   (['allergens','greeting'].includes(q.key)?'<p class="muted">Для безопасности и тренировки приветствия подтверждение обязательно.</p>':'')+
    '<button type="submit" class="lime-action">Сохранить задание</button></form>').join('')+
   '</div>';
 }
@@ -232,6 +226,7 @@ document.addEventListener('click',async e=>{
  onboardBusy=true;
  try{
   if(action==='onboard-open'){managerMode=false;view='onboarding';nav();await onboardingPage()}
+  if(action==='onboard-reflection')obReflection();
   if(action==='onboard-diagnostic')await onboardingDiagnosticPage(id);
   if(action==='onboard-study')await onboardingStudy(id);
   if(action==='onboard-manager-staff')await onboardingTeamDetail(id);
@@ -256,7 +251,7 @@ document.addEventListener('submit',async e=>{
   }
   if(kind==='feedback'){
    await api('onboarding/day1/feedback','POST',{
-    rating:Number(field.get('rating')),clarity:Number(field.get('clarity')),comment:field.get('comment')||''
+    reflection:{day:field.get('day'),team:field.get('team'),continue:field.get('continue')}
    });
    await onboardingPage();
   }
@@ -287,7 +282,7 @@ document.addEventListener('submit',async e=>{
    const critical=['allergens','greeting'].includes(form.dataset.key);
    const result=await api('onboarding/quests/manage/'+form.dataset.key,'PUT',{
     title:field.get('title'),instruction:field.get('instruction'),
-    prompt:field.get('prompt'),review:critical||field.has('review')
+    prompt:field.get('prompt'),review:false
    });
    await onboardingQuestsManagerPage();
   }
@@ -300,3 +295,8 @@ document.addEventListener('submit',async e=>{
  }catch(err){error(err);buttons.forEach(b=>b.disabled=false)}
  finally{onboardBusy=false}
 });
+
+function obReflection(){
+ $('#app').innerHTML=obBack()+'<section class="card"><h1>Как прошёл мой первый день?</h1><p>Рады, что ты провёл этот день с нами. Здесь нет правильных ответов — расскажи, как ты себя чувствуешь.</p><form data-onboard-form="feedback"><label>Как прошёл твой день?<textarea name="day" maxlength="1000" required></textarea></label><label>С кем ты познакомился?<textarea name="team" maxlength="1000" required placeholder="Можно написать имена или роли коллег"></textarea></label><label>Хочешь ли ты продолжать у нас?<select name="continue" required><option value="">Выбери ответ</option><option value="yes">Да</option><option value="unsure">Пока присматриваюсь</option><option value="no">Нет</option></select></label><p>Любой ответ важен. Его не нужно согласовывать с менеджером.</p><button type="submit" class="lime-action">Сохранить и перейти к оценке знаний сервиса →</button></form></section>';
+ window.scrollTo(0,0);
+}

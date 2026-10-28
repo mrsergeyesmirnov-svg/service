@@ -319,3 +319,8 @@ CREATE TABLE IF NOT EXISTS onboarding_diagnostic_attempts (
 );
 CREATE INDEX IF NOT EXISTS onboarding_diagnostics_recent
  ON onboarding_diagnostic_attempts(staff_id,topic_key,created_at);
+
+-- First-day reflections are not scored or subject to manager approval.
+ALTER TABLE onboarding_feedback ALTER COLUMN rating DROP NOT NULL;
+ALTER TABLE onboarding_feedback ALTER COLUMN clarity DROP NOT NULL;
+ALTER TABLE onboarding_feedback ADD COLUMN IF NOT EXISTS reflection JSONB;
