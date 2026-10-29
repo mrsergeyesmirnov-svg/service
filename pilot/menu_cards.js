@@ -37,15 +37,24 @@ function renderMenuPractice(){
   '<div class="row wine-stats"><strong>Знаю: '+known+' / '+all.length+'</strong><span>В работе: '+menuQueue.length+'</span></div>'+
   '<progress max="'+all.length+'" value="'+known+'" aria-label="Изучено карточек '+known+' из '+all.length+'"></progress>'+
   '<div class="wine-caption">'+direction+'</div>'+
-  '<button type="button" class="wine-flip-card" data-action="menu-flip" aria-expanded="'+menuFlipped+'">'+
-  '<div class="menu-card-photos">'+(pair.photos||[]).map(id=>dishPhoto(id,'wide')).join('')+'</div>'+
-  '<span class="wine-card-hint">'+(menuFlipped?'Ответ':'Вспомни без подсказок')+'</span>'+
-  (menuFlipped?facts:'<div class="wine-question">'+esc(pair.prompt)+'</div>')+
-  '<span class="wine-card-foot">'+(menuFlipped?'Скрыть ответ':'Показать ответ ↻')+'</span></button>'+
-  (menuFlipped?'<p class="muted wine-source">Источник: '+esc(pair.source)+'</p>'+
-   '<div class="wine-rating-actions">'+btn('Повторить','menu-rate','repeat','secondary')+
-   btn('Трудно','menu-rate','hard','secondary')+btn('Знаю','menu-rate','know','lime-action')+'</div>':
-   '<p class="muted wine-instruction">Сначала попробуй ответить, затем переверни карточку и оцени себя.</p>')+
+  '<button type="button" class="wine-flip-card menu-flip-scene" data-action="menu-flip" aria-expanded="'+menuFlipped+'" aria-label="'+(menuFlipped?'Скрыть ответ':'Показать ответ')+'">'+
+  '<span class="menu-flip-inner'+(menuFlipped?' is-flipped':'')+'">'+
+    '<span class="menu-flip-face menu-flip-front" aria-hidden="'+menuFlipped+'">'+
+      '<span class="menu-card-photos">'+(pair.photos||[]).map(id=>dishPhoto(id,'wide')).join('')+'</span>'+
+      '<span class="wine-card-hint">Вспомни без подсказок</span>'+
+      '<span class="wine-question">'+esc(pair.prompt)+'</span>'+
+      '<span class="wine-card-foot">Показать ответ ↻</span>'+
+    '</span>'+
+    '<span class="menu-flip-face menu-flip-back" aria-hidden="'+!menuFlipped+'">'+
+      '<span class="wine-card-hint">Проверь себя</span>'+
+      '<span class="menu-flip-answer">'+facts+'</span>'+
+      '<span class="wine-card-foot">Скрыть ответ ↻</span>'+
+    '</span>'+
+  '</span></button>'+
+  '<p class="muted wine-source" '+(menuFlipped?'':'hidden')+'>Источник: '+esc(pair.source)+'</p>'+
+  '<div class="wine-rating-actions" '+(menuFlipped?'':'hidden')+'>'+btn('Повторить','menu-rate','repeat','secondary')+
+   btn('Трудно','menu-rate','hard','secondary')+btn('Знаю','menu-rate','know','lime-action')+'</div>'+
+  '<p class="muted wine-instruction" '+(menuFlipped?'hidden':'')+'>Сначала попробуй ответить, затем переверни карточку и оцени себя.</p>'+
   '<div class="actions wine-leave">'+btn('К уроку','menu-return','','secondary')+
   btn('К тесту','menu-continue','','secondary')+'</div>'+
   '<p role="status" id="menu-status" class="muted"></p>';
@@ -74,7 +83,24 @@ document.addEventListener('click',async e=>{
  try{
   if(action==='menu-practice')await openMenuPractice();
   if(action==='menu-repeat')await openMenuPractice(true);
-  if(action==='menu-flip'){menuFlipped=!menuFlipped;renderMenuPractice()}
+  if(action==='menu-flip'){
+   if(menuPending)return;
+   menuFlipped=!menuFlipped;
+   const inner=b.querySelector('.menu-flip-inner');
+   if(inner){
+    inner.classList.toggle('is-flipped',menuFlipped);
+    b.setAttribute('aria-expanded',String(menuFlipped));
+    b.setAttribute('aria-label',menuFlipped?'Скрыть ответ':'Показать ответ');
+    b.querySelector('.menu-flip-front')?.setAttribute('aria-hidden',String(menuFlipped));
+    b.querySelector('.menu-flip-back')?.setAttribute('aria-hidden',String(!menuFlipped));
+    const source=document.querySelector('.wine-source');
+    const rating=document.querySelector('.wine-rating-actions');
+    const instruction=document.querySelector('.wine-instruction');
+    if(source)source.hidden=!menuFlipped;
+    if(rating)rating.hidden=!menuFlipped;
+    if(instruction)instruction.hidden=menuFlipped;
+   }
+  }
   if(action==='menu-rate')await rateMenu(id);
   if(action==='menu-return')showChapter();
   if(action==='menu-continue')await openAssessmentFlow();
