@@ -155,7 +155,7 @@ async function dishDetail(id){
  btn("Удалить карточку","dish-delete",id,"secondary")+'</div>':"")+'</article>'+dishSwitchControls(id);
  await showDishPhotos();
 }
-async function dishEditor(id){
+async function dishEditor(id,message=""){
  const c=id?dishCards.find(x=>x.id===id):{title:"",section:"Основное меню",ingredients:[],description:""};
  if(!c)return;
  $("#app").innerHTML=btn("← Карточки","dish-list","","secondary")+
@@ -169,7 +169,11 @@ async function dishEditor(id){
  '<label>Аллергены по проверенной ТТК (необязательно)<textarea name="allergens" rows="3" maxlength="1200">'+esc(c.allergens||"")+'</textarea></label>'+
  '<label>'+(id?"Заменить фото":"Добавить фото")+' (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>'+
  '<p class="muted">После изменения опубликованная карточка станет черновиком до проверки менеджера.</p>'+
- '<button type="submit">Сохранить карточку</button></form>';
+ '<button type="submit">Сохранить карточку</button></form>'+
+ '<p role="status">'+esc(message)+'</p>'+
+ (id?(c.published?'<p class="dish-badge live">Опубликовано</p>':btn("Материал проверен — опубликовать","dish-publish",id)):'')+
+ (id?dishSwitchControls(id,true):'');
+ $("#dish-edit-form").dataset.dirty="false";
  $("#dish-edit-form").addEventListener("input",()=>{$("#dish-edit-form").dataset.dirty="true"});
  $("#dish-edit-form").addEventListener("change",()=>{$("#dish-edit-form").dataset.dirty="true"});
  $("#dish-edit-form").onsubmit=async e=>{
@@ -188,7 +192,7 @@ async function dishEditor(id){
     if(dishImageUrls.has(target)){URL.revokeObjectURL(dishImageUrls.get(target));dishImageUrls.delete(target)}
    }
    dishCards=await api("dishes");
-   if(dishCards.some(c=>c.id===target))await dishDetail(target);
+   if(dishCards.some(c=>c.id===target))await dishEditor(target,"Карточка сохранена. Можно опубликовать или перейти к следующей.");
    else await dishesPage();
   }catch(err){error(err)}finally{b.disabled=false}
  };
@@ -216,7 +220,12 @@ document.addEventListener("click",async e=>{
   if(action==="dish-create")await dishEditor(null);
   if(action==="dish-delete"&&confirm("Убрать блюдо из Академии? Данные сохранятся в архиве.")){await api("dishes/"+id,"DELETE");await dishesPage()}
   if(action==="dish-publish"&&confirm("Вы проверили фотографию, состав и описание по действующей ТТК? Аллергены можно оставить незаполненными.")){
-   await api("dishes/"+id+"/publish","POST",{reviewed:true});await dishesPage()
+   const form=document.querySelector("#dish-edit-form");
+   if(form?.dataset.dirty==="true")throw Error("Сначала сохрани изменения карточки, затем опубликуй её.");
+   await api("dishes/"+id+"/publish","POST",{reviewed:true});
+   dishCards=await api("dishes");
+   if(form)await dishEditor(Number(id),"Карточка опубликована. Можно перейти к следующей.");
+   else await dishDetail(Number(id));
   }
  }catch(err){error(err)}finally{b.disabled=false}
 });

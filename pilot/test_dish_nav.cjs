@@ -16,7 +16,15 @@ const ctx={
  user:{role:"manager"},
  $:sel=>sel==="#app"?root:sel==="#dish-edit-form"?form:null,
  esc:value=>String(value??""),
- btn:buttons,api:async()=>[],
+ btn:buttons,
+ FormData:class {get(name){return {title:"Рамен обновлённый",section:"Супы",ingredients:"Лапша",description:"",allergens:""}[name]}},
+ api:async(path,method,data)=>{
+   if(path==="dishes")return cards;
+   const id=Number(path.split("/")[1]),card=cards.find(c=>c.id===id);
+   if(method==="PUT"){Object.assign(card,data,{published:false});return {id}}
+   if(path.endsWith("/publish")){card.published=true;return {ok:true}}
+   throw Error("Unexpected API: "+path);
+ },
  error:err=>{throw err},confirm:()=>confirmYes,
  learningCourses:[],activeCourse:null,token:"test"
 };
@@ -53,5 +61,22 @@ async function click(action,id){
  confirmYes=true;
  await click("dish-adjacent-edit",1);
  assert.match(root.innerHTML,/value="Уха"/);
- console.log("Dish navigation and optional description: OK");
+ await ctx.dishEditor(2);
+ form.dataset.dirty="true";
+ const saveButton={disabled:false};
+ form.querySelector=()=>saveButton;
+ await form.onsubmit({preventDefault(){},target:form});
+ assert.match(root.innerHTML,/Редактировать блюдо/);
+ assert.match(root.innerHTML,/value="Рамен обновлённый"/);
+ assert.match(root.innerHTML,/Карточка сохранена/);
+ assert.match(root.innerHTML,/data-action="dish-adjacent-edit" data-id="3"/);
+ assert.equal(form.dataset.dirty,"false");
+ await click("dish-publish",2);
+ assert.equal(cards[1].published,true);
+ assert.match(root.innerHTML,/Карточка опубликована/);
+ assert.match(root.innerHTML,/Редактировать блюдо/);
+ await click("dish-adjacent-edit",3);
+ assert.match(root.innerHTML,/value="Борщ"/);
+ assert.doesNotMatch(root.innerHTML,/Следующая →/);
+ console.log("Dish save, publish and sequential editing: OK");
 })().catch(e=>{console.error(e);process.exitCode=1});
