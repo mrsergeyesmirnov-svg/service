@@ -36,3 +36,18 @@
 .journey-next button.secondary{background:#eaf0e3;color:#233f34}
 
 .menu-card-photos .dish-photo{width:100%;aspect-ratio:4/3;max-height:260px;border-radius:16px;overflow:hidden;margin:0 0 14px}.menu-card-photos img{width:100%;height:100%;object-fit:contain}
+
+/* MOJO menu Quizlet: GPU-friendly flip, photo stays mounted on the front. */
+.menu-flip-scene{display:block;position:relative;padding:0!important;min-height:480px;perspective:1100px;background:transparent!important;border:0!important;box-shadow:none!important;overflow:visible;isolation:isolate}
+.menu-flip-inner{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:1fr;width:100%;min-height:480px;transform-style:preserve-3d;transition:transform 620ms cubic-bezier(.22,.7,.2,1);will-change:transform}
+.menu-flip-inner.is-flipped{transform:rotateY(180deg)}
+.menu-flip-face{grid-area:1/1;display:flex;flex-direction:column;gap:24px;align-items:stretch;justify-content:space-between;text-align:left;padding:32px 28px;background:#fff;color:#233f34;border:1px solid #e6ede8;border-radius:26px;box-shadow:0 10px 28px rgba(35,63,52,.065);-webkit-backface-visibility:hidden;backface-visibility:hidden;transform:translateZ(1px);min-width:0}
+.menu-flip-back{transform:rotateY(180deg) translateZ(1px);background:linear-gradient(155deg,#fff 0%,#f8faf6 100%)}
+.menu-flip-face .menu-card-photos{display:block;width:100%}
+.menu-flip-face .menu-card-photos .dish-photo{max-height:300px}
+.menu-flip-answer{display:block;align-self:stretch;max-height:420px;overflow-y:auto;overscroll-behavior:contain}
+.menu-flip-face .wine-card-foot{display:block;width:100%}
+.menu-flip-scene:focus-visible{outline:3px solid #a4c973;outline-offset:5px}
+.wine-source[hidden],.wine-rating-actions[hidden],.wine-instruction[hidden]{display:none!important}
+@media(max-width:390px){.menu-flip-scene,.menu-flip-inner{min-height:445px}.menu-flip-face{padding:22px 20px}.menu-flip-answer{max-height:340px}}
+@media(prefers-reduced-motion:reduce){.menu-flip-inner{transition:none;will-change:auto}}
