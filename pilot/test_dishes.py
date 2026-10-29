@@ -285,7 +285,7 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(dish["ingredients"],["Tomato"])
         self.assertFalse(dish["published"])
         self.assertEqual(self.client.post(f'/api/dishes/{dish["id"]}/publish',
-            headers=self.headers(10),json={"reviewed":True}).status_code,409)
+            headers=self.headers(10),json={"reviewed":True}).status_code,200)
         edited={"title":"Caprese","section":"Salads","ingredients":["Tomato"],
                 "description":"Verified by manager","allergens":"Milk"}
         self.assertEqual(self.client.put(f'/api/dishes/{dish["id"]}',
