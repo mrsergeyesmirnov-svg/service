@@ -28,24 +28,14 @@ def approved_card_questions(chapters, course_id):
     cards = [c for c in chapters if c.get("kind") == "dish" and len(_ingredients(c)) >= 2]
     if not cards:
         return []
+    # One question per DISTINCT dish. Never ask free recall and multiple
+    # choice back-to-back about the same recipe.
+    selected = cards[:8]
     questions = []
-    selected = cards[:6]
-    for card in selected:
+    for index,card in enumerate(selected):
         title = card["title"]
         source = f'{card["source"]}, стр. {card["source_page"]}' if card.get("source_page") else card["source"]
         ingredients = _ingredients(card)
-        names = ingredients
-        # Open recall is checked deterministically, based on the approved composition.
-        questions.append({
-            "type": "ingredients",
-            "question": f'Перечисли по памяти все компоненты ({len(names)}) из состава «{title}». Без подсказок.',
-            "ingredients": [[name] for name in names],
-            "allowed_extra": [],
-            "options": [],
-            "explanation": "Проверь состав по утверждённой карточке блюда, затем повтори пропущенные компоненты.",
-            "source": source,
-        })
-        correct = _order(ingredients, title + "correct")[:min(3, len(ingredients))]
         own = {normalize(x) for x in ingredients}
         other = {}
         for neighbor in cards:
@@ -54,21 +44,30 @@ def approved_card_questions(chapters, course_id):
             for candidate in _ingredients(neighbor):
                 key = normalize(candidate)
                 if key not in own and len(candidate) <= 110:
-                    other.setdefault(key, candidate)
-        decoys = _order(list(other.values()), title + "decoy")
-        if len(correct) >= 2 and len(decoys) >= 2:
-            # Interleave believable ingredients taken from OTHER approved cards.
-            options = [correct[0], decoys[0], correct[1], decoys[1]]
-            if len(correct) >= 3 and len(decoys) >= 3:
-                options.extend([decoys[2], correct[2]])
-            options = _order(options, str(course_id) + ":" + str(card["dish_id"]))
+                    other.setdefault(key,candidate)
+        decoys = _order(list(other.values()),title + "decoy")
+        if index % 2 == 1 and len(ingredients) >= 2 and len(decoys) >= 2:
+            correct = _order(ingredients,title+"correct")[:min(3,len(ingredients))]
+            options = [correct[0],decoys[0],correct[1],decoys[1]]
+            if len(correct)>=3 and len(decoys)>=3:
+                options.extend([decoys[2],correct[2]])
+            options=_order(options,str(course_id)+":"+str(card["dish_id"]))
             questions.append({
-                "type": "multiple",
-                "question": f'Отметь все компоненты, которые действительно входят в «{title}».',
-                "options": options,
-                "correct": [i for i, x in enumerate(options) if normalize(x) in own],
-                "explanation": "Различай ингредиенты этого блюда и похожих позиций меню. Все варианты взяты из утверждённых карточек.",
-                "source": source,
+                "type":"multiple",
+                "question":f'Какие из перечисленных ингредиентов входят в «{title}»?',
+                "options":options,
+                "correct":[i for i,x in enumerate(options) if normalize(x) in own],
+                "explanation":"Сравни ингредиенты блюда с похожими позициями по утверждённым ТТК.",
+                "source":source,
             })
-    # Start with a mixture of free answers and multi-select, not blocks of one type.
-    return questions[:12]
+        else:
+            questions.append({
+                "type":"ingredients",
+                "question":f'Перечисли по памяти весь состав «{title}». Без подсказок.',
+                "ingredients":[[name] for name in ingredients],
+                "allowed_extra":[],
+                "options":[],
+                "explanation":"Проверь состав по утверждённой карточке блюда, затем повтори пропущенные компоненты.",
+                "source":source,
+            })
+    return questions
