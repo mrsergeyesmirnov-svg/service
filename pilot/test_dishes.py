@@ -209,7 +209,7 @@ class DishIntegration(unittest.TestCase):
         p.insert_image(fitz.Rect(550,110,920,350),stream=pic.getvalue())
         return doc.tobytes()
 
-    def test_pptx_template_import_requires_manager_and_allergen_review(self):
+    def test_pptx_publish_allergens_optional_manager_review_required(self):
         from pptx import Presentation
         from pptx_ttk import template_pptx
         from pptx.util import Inches
@@ -248,7 +248,12 @@ class DishIntegration(unittest.TestCase):
         self.assertEqual(self.client.get("/api/dishes/"+str(row["id"])+"/photo",
             headers=self.headers(10)).status_code,200)
         self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
-            json={"reviewed":True},headers=self.headers(10)).status_code,409)
+            json={"reviewed":False},headers=self.headers(10)).status_code,422)
+        self.assertEqual(self.client.post(f'/api/dishes/{row["id"]}/publish',
+            json={"reviewed":True},headers=self.headers(10)).status_code,200)
+        published=self.client.get("/api/dishes",headers=self.headers(10)).json()[0]
+        self.assertTrue(published["published"])
+        self.assertEqual(published["allergens"], "")
         edit={"title":row["title"],"section":row["section"],"ingredients":row["ingredients"],
               "description":"Подача после проверки","allergens":"Молоко"}
         saved=self.client.put(f'/api/dishes/{row["id"]}',headers=self.headers(10),json=edit)
