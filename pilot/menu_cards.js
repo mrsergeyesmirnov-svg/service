@@ -3,7 +3,7 @@
 // All answers are taken from the published, manager-reviewed dish snapshot.
 let menuDeck=null, menuQueue=[],menuFlipped=false,menuPending=false;
 
-async function openMenuPractice(repeatAll=false){
+async function openMenuPractice(repeatAll=true){
  if(!activeCourse)throw Error('Сначала открой курс');
  menuDeck=await api('menu-cards/'+activeCourse.id);
  activeCourse.menu=menuDeck;
@@ -46,6 +46,7 @@ function renderMenuPractice(){
    '<div class="wine-rating-actions">'+btn('Повторить','menu-rate','repeat','secondary')+
    btn('Трудно','menu-rate','hard','secondary')+btn('Знаю','menu-rate','know','lime-action')+'</div>':
    '<p class="muted wine-instruction">Сначала попробуй ответить, затем переверни карточку и оцени себя.</p>')+
+  '<div class="actions">'+btn('← Предыдущая','menu-back','','secondary')+btn('Следующая →','menu-forward','','secondary')+'</div>'+
   '<div class="actions wine-leave">'+btn('К уроку','menu-return','','secondary')+
   btn('К тесту','menu-continue','','secondary')+'</div>'+
   '<p role="status" id="menu-status" class="muted"></p>';
@@ -62,19 +63,31 @@ async function rateMenu(rating){
   await api('menu-cards/'+activeCourse.id+'/rating','POST',{id:p.id,rating});
   menuDeck.ratings[p.id]=rating;
   menuQueue.shift();
-  if(rating!=='know')menuQueue.push(p);
+  menuQueue.push(p);
   menuFlipped=false;renderMenuPractice();
  }finally{menuPending=false;controls.forEach(x=>x.disabled=false)}
 }
 document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  const {action,id}=b.dataset;
- if(!['menu-practice','menu-repeat','menu-flip','menu-rate','menu-return','menu-continue'].includes(action))return;
+ if(!['menu-back','menu-forward','menu-practice','menu-repeat','menu-flip','menu-rate','menu-return','menu-continue'].includes(action))return;
  b.disabled=true;
  try{
   if(action==='menu-practice')await openMenuPractice();
   if(action==='menu-repeat')await openMenuPractice(true);
-  if(action==='menu-flip'){menuFlipped=!menuFlipped;renderMenuPractice()}
+  if(action==='menu-back'||action==='menu-forward'){
+   if(menuQueue.length>1){
+    if(action==='menu-forward')menuQueue.push(menuQueue.shift());
+    else menuQueue.unshift(menuQueue.pop());
+   }
+   menuFlipped=false;renderMenuPractice();
+  }
+  if(action==='menu-flip'){
+   menuFlipped=!menuFlipped;renderMenuPractice();
+   const card=document.querySelector('[data-action="menu-flip"]');
+   if(card?.animate&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    card.animate([{transform:'perspective(900px) rotateY(-90deg)',opacity:0.4},{transform:'perspective(900px) rotateY(0deg)',opacity:1}],{duration:260,easing:'ease-out'});
+  }
   if(action==='menu-rate')await rateMenu(id);
   if(action==='menu-return')showChapter();
   if(action==='menu-continue')await openAssessmentFlow();

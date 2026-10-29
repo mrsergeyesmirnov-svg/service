@@ -45,9 +45,9 @@ function learningDone(c){
 }
 let courseFilter='all',courseQuery='';
 function courseCard(c){
- const progress=c.chapters?Math.round(100*c.read/c.chapters):0;
+ const progress=learningDone(c)?100:Math.min(99,c.chapters?Math.round(100*c.read/c.chapters):0);
  const cover=c.cover_dish_id?dishPhoto(c.cover_dish_id,'course-cover'):'<span class="course-symbol">'+navSvg(c.category==='service'?'cases':'courses')+'</span>';
- return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+cover+'<span class="course-copy"><strong>'+esc(c.title)+'</strong><small>'+esc(directions[c.category]||'Обучение')+'</small><progress max="100" value="'+progress+'" aria-label="Прочитано '+progress+'%"></progress><small>'+(learningDone(c)?'Завершён':c.staged_menu&&c.read===c.chapters?'Остались проверки знаний':c.read+' из '+c.chapters+' глав')+'</small></span><span class="course-arrow" aria-hidden="true">'+(learningDone(c)?'✓':'›')+'</span></button>';
+ return '<button class="course-row" data-action="study" data-id="'+c.id+'">'+cover+'<span class="course-copy"><strong>'+esc(c.title)+'</strong><small>'+esc(directions[c.category]||'Обучение')+'</small><progress max="100" value="'+progress+'" aria-label="Прогресс курса '+progress+'%"></progress><small>'+(learningDone(c)?'Завершён':c.staged_menu&&c.read===c.chapters?'Остались проверки знаний':c.read+' из '+c.chapters+' глав')+'</small></span><span class="course-arrow" aria-hidden="true">'+(learningDone(c)?'✓':'›')+'</span></button>';
 }
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
@@ -72,7 +72,7 @@ async function learningPage(page){
  const urgent=pending[0],next=urgent||learningCourses.find(c=>!learningDone(c));
  const showInduction=induction?.available&&induction.stage!=='main';
  root.innerHTML='<div class="learner-greeting"><span class="learner-avatar">'+esc(user.name.slice(0,1))+'</span><div><h1>Привет, '+esc(user.name)+'</h1><p>'+esc(roles[user.role])+' · '+esc(user.restaurant)+'</p></div>'+'<button class="greeting-events" data-action="nav" data-id="events" aria-label="Мероприятия">'+navSvg('events')+'</button>'+'</div>'+
- (showInduction?onboardingHomeCard(induction):'<section class="card continue-card"><small>Мой путь в MOJO</small><h2>'+esc(next?.title||(total?'Программа пройдена':'Твоя программа обучения'))+'</h2><p>'+(urgent?'До '+esc(dateLabel(urgent.deadline)):total?read+' из '+total+' глав прочитано':'Опубликованные курсы появятся здесь.')+'</p><progress max="'+(total||1)+'" value="'+read+'" aria-label="Прочитано '+read+' из '+total+' глав"></progress>'+ (next?btn('Продолжить обучение →',urgent?'lesson':'study',next.id):btn('Открыть программу →','nav','catalog'))+'</section>')+
+ (showInduction?onboardingHomeCard(induction):'<section class="card continue-card"><small>Мой путь в MOJO</small><h2>'+esc(next?.title||(total?'Программа пройдена':'Твоя программа обучения'))+'</h2><p>'+(urgent?'До '+esc(dateLabel(urgent.deadline)):total?read+' из '+total+' глав прочитано':'Опубликованные курсы появятся здесь.')+'</p><progress max="'+(total||1)+'" value="'+read+'" aria-label="Прогресс курса '+read+' из '+total+' глав"></progress>'+ (next?btn('Продолжить обучение →',urgent?'lesson':'study',next.id):btn('Открыть программу →','nav','catalog'))+'</section>')+
  '<div class="learner-summary"><button class="card event-summary" data-action="nav" data-id="events">'+navSvg('events')+'<small>Ближайшее мероприятие</small><strong>'+esc(event?eventDate(event.starts_at):eventError?'Не удалось загрузить':'Пока не запланировано')+'</strong><span>'+esc(event?.title||(eventError?'Открыть календарь и повторить':'Посмотреть календарь'))+'</span></button><button class="card progress-summary" data-action="nav" data-id="catalog"><small>Изучено глав</small><strong>'+read+'<span> / '+total+'</span></strong><span>Продолжить программу ›</span></button></div>'+
  '<div class="row learner-section"><h2>Мои курсы</h2>'+btn('Все →','nav','catalog','secondary')+'</div>'+
  (learningCourses.slice(0,4).map(courseCard).join('')||'<p class="muted">Менеджер ещё не опубликовал материалы.</p>')+
@@ -174,6 +174,7 @@ function showChapter(){
   '<h1>'+esc(p.title)+'</h1>'+chapterBody(p)+'</article>'+
   '<div class="actions chapter-actions">'+(chapterIndex?btn('← Назад','chapter-prev','','secondary'):'')+
   btn(nextLabel,'chapter-next','','lime-action')+'</div>'+
+  (c.menu?.pairs.length?btn('Карточки на запоминание','menu-repeat','','secondary'):'')+
   (last?'<details class="card lesson-extra"><summary>История обучения и тесты</summary>'+
    (c.history.length?c.history.map(t=>'<p>'+esc(new Date(t.created_at).toLocaleString('ru-RU'))+
     ' · '+t.score+'% · '+(t.passed?'Сдано':'Повторить материал')+'</p>').join(''):'<p>Тест ещё не пройден.</p>')+
