@@ -166,7 +166,7 @@ async function dishEditor(id){
  '<label>Раздел меню<input name="section" maxlength="100" required value="'+esc(c.section)+'"></label>'+
  '<label>Ингредиенты (по одному на строку)<textarea name="ingredients" rows="9">'+esc(c.ingredients.join("\n"))+'</textarea></label>'+
  '<label>Описание, особенности, подача (необязательно)<textarea name="description" rows="7" maxlength="4500">'+esc(c.description)+'</textarea></label>'+
- '<label>Аллергены по проверенной ТТК<textarea name="allergens" rows="3" maxlength="1200">'+esc(c.allergens||"")+'</textarea></label>'+
+ '<label>Аллергены по проверенной ТТК (необязательно)<textarea name="allergens" rows="3" maxlength="1200">'+esc(c.allergens||"")+'</textarea></label>'+
  '<label>'+(id?"Заменить фото":"Добавить фото")+' (JPG, PNG, WebP до 4 МБ)<input type="file" id="dish-photo-file" accept="image/jpeg,image/png,image/webp"></label>'+
  '<p class="muted">После изменения опубликованная карточка станет черновиком до проверки менеджера.</p>'+
  '<button type="submit">Сохранить карточку</button></form>';
@@ -215,7 +215,7 @@ document.addEventListener("click",async e=>{
   if(action==="dish-edit")await dishEditor(Number(id));
   if(action==="dish-create")await dishEditor(null);
   if(action==="dish-delete"&&confirm("Убрать блюдо из Академии? Данные сохранятся в архиве.")){await api("dishes/"+id,"DELETE");await dishesPage()}
-  if(action==="dish-publish"&&confirm("Вы проверили фотографию, состав, описание и аллергены по действующей ТТК?")){
+  if(action==="dish-publish"&&confirm("Вы проверили фотографию, состав и описание по действующей ТТК? Аллергены можно оставить незаполненными.")){
    await api("dishes/"+id+"/publish","POST",{reviewed:true});await dishesPage()
   }
  }catch(err){error(err)}finally{b.disabled=false}
