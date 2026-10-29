@@ -16,3 +16,20 @@ const unfilled=ctx.chapterBody({kind:'dish',title:'Incomplete',ingredients:[],ha
 assert.match(unfilled,/Состав пока не заполнен/);
 assert.doesNotMatch(unfilled,/<li>Угорь<\/li>/);
 console.log('Dish ingredient lesson defaults and missing data: OK');
+
+
+const review=ctx.reviewQuestion({
+ type:'ingredients',question:'Состав ролла',source:'Source PPTX',
+ ingredients:[['Лосось'],['Соус юдзу'],['Тобико']],
+ explanation:'Проверить состав',
+ assessment:{recognized:1,total:3,missing:['Соус юдзу','Тобико'],
+    extra:[],incomplete:[{answer:'юдзу',expected:['Соус юдзу']}]}
+},'лосось юдзу',0);
+assert.match(review,/Распознано: 1 из 3/);
+assert.match(review,/Неполные названия/);
+assert.match(review,/Соус юдзу/);
+assert.match(review,/<details><summary>Сравнить ответ с эталоном/);
+assert.match(review,/<details><summary>Источник/);
+const input=ctx.questionInput({type:'ingredients'},'answer','лосось рис');
+assert.match(input,/через пробел или запятую/);
+console.log('Free-form ingredient feedback is concise and explains qualifiers: OK');
