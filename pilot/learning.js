@@ -7,13 +7,35 @@ async function loadOptionalMenu(cid){
 }
 // The learning screens use server-authenticated identity and PostgreSQL progress.
 function questionInput(q,name,value){
- if(q.type==='ingredients')return `<label>Перечисли состав по памяти: один ингредиент на строку<textarea name="${name}" required maxlength="3000" placeholder="Напиши состав…">${esc(value||'')}</textarea></label><p class="muted">Количество ингредиентов и подсказки появятся только после ответа.</p>`;
+ if(q.type==='ingredients')return `<label>Перечисли состав по памяти<textarea name="${name}" required maxlength="3000" placeholder="Напиши состав…">${esc(value||'')}</textarea></label><p class="muted">Можно писать в одну строку через пробел или запятую. Порядок не важен. Для соусов и заготовок указывай полное название.</p>`;
  const multi=q.type==='multiple';return (multi?'<p class="muted">Отметь все подходящие варианты.</p>':'')+q.options.map((o,i)=>`<label class="option"><input type="${multi?'checkbox':'radio'}" name="${name}" value="${i}" ${multi?'':'required'} ${(multi?(value||[]).includes(i):value===i)?'checked':''}><span>${esc(o)}</span></label>`).join('');
 }
 function readAnswer(q,f,name){return q.type==='ingredients'?String(f.get(name)||''):q.type==='multiple'?f.getAll(name).map(Number):Number(f.get(name))}
 function answerLabel(q,a){return q.type==='ingredients'?String(a??''):Array.isArray(a)?a.map(i=>q.options[i]).join(', '):q.options[a]||'—'}
 function correctLabel(q){return q.type==='ingredients'?q.ingredients.map(g=>g[0]).join(', '):answerLabel(q,q.correct)}
-function reviewQuestion(q,a,i){const assessment=q.assessment;return `<article class="card"><h3>${i+1}. ${esc(q.question)}</h3><p>Твой ответ: ${esc(answerLabel(q,a))}</p><p>Эталон: ${esc(correctLabel(q))}</p>${assessment?.missing?.length?`<p>Пропущено: ${esc(assessment.missing.join(', '))}</p>`:''}${assessment?.extra?.length?`<p>Лишнее или не распознано: ${esc(assessment.extra.join(', '))}</p><p class="muted">Если название равнозначно ингредиенту, попроси менеджера проверить допустимые названия.</p>`:''}<p>${esc(q.explanation)}</p><p class="muted">Повторить: ${esc(q.source)}</p></article>`}
+function reviewQuestion(q,a,i){
+ const assessment=q.assessment;
+ if(q.type==='ingredients'){
+  const recognized=assessment&&typeof assessment.recognized==='number'
+   ?'<p><strong>Распознано: '+assessment.recognized+' из '+assessment.total+'</strong></p>':'';
+  const partial=(assessment?.incomplete||[]).map(item=>
+   '«'+esc(item.answer)+'» — уточни: '+esc((item.expected||[]).join(' / '))).join('; ');
+  return '<article class="card"><h3>'+(i+1)+'. '+esc(q.question)+'</h3>'+recognized+
+   (assessment?.missing?.length?'<p><strong>Не хватает:</strong> '+esc(assessment.missing.join(', '))+'</p>':'')+
+   (partial?'<p class="muted"><strong>Неполные названия:</strong> '+partial+'</p>':'')+
+   (assessment?.extra?.length?'<p><strong>Лишнее:</strong> '+esc(assessment.extra.join(', '))+'</p>':'')+
+   '<details><summary>Сравнить ответ с эталоном</summary><p>Твой ответ: '+esc(answerLabel(q,a))+
+   '</p><p>Эталон: '+esc(correctLabel(q))+'</p></details>'+
+   '<p class="muted">Состав проверяется по ТТК. Если у блюда есть допустимые сокращения, их должен утвердить менеджер.</p>'+
+   '<details><summary>Источник</summary><p class="muted">'+esc(q.source)+'</p></details></article>';
+ }
+ return '<article class="card"><h3>'+(i+1)+'. '+esc(q.question)+'</h3>'+
+  '<p>Твой ответ: '+esc(answerLabel(q,a))+'</p>'+
+  '<p>Эталон: '+esc(correctLabel(q))+'</p>'+
+  (assessment?.missing?.length?'<p>Пропущено: '+esc(assessment.missing.join(', '))+'</p>':'')+
+  (assessment?.extra?.length?'<p>Лишнее: '+esc(assessment.extra.join(', '))+'</p>':'')+
+  '<p>'+esc(q.explanation)+'</p><details><summary>Источник</summary><p class="muted">'+esc(q.source)+'</p></details></article>';
+}
 const directions={menu:'Основное меню',bar:'Бар MOJO',coffee:'Теория кофе',service:'Сервис'};
 let learningCourses=[],activeCourse,activeAssignment=null,chapterIndex=0,quizIndex=0,quizAnswers=[],quizRequest='';
 function learningDone(c){
