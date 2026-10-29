@@ -1,5 +1,6 @@
 """MOJO staged menu checks: approved sources, all dishes, independent results."""
 import os
+import re
 import uuid
 import unittest
 from pathlib import Path
@@ -41,6 +42,14 @@ class StageUnit(unittest.TestCase):
         self.assertLessEqual(len(intermediate),12)
         self.assertTrue(any("Ролл 37" in q["question"] for q in intermediate))
         self.assertTrue(any("Ролл 1" in q["question"] for q in intermediate))
+        self.assertEqual(len(intermediate),8)
+        dish_names=[re.search(r"«([^»]+)»",q["question"]).group(1) for q in intermediate]
+        self.assertEqual(len(dish_names),len(set(dish_names)),
+            "Never ask both recall and multiple choice about one dish")
+        self.assertEqual([q["type"] for q in intermediate],
+                         ["ingredients","multiple"]*4)
+        self.assertEqual(intermediate,menu_exam_questions(cards,"intermediate",7),
+                         "Question order must be frozen across GET and POST")
 
     def test_never_silently_skip_unverified_dish(self):
         cards=[chapter(1),chapter(2)]
@@ -149,7 +158,12 @@ class StageIntegration(unittest.TestCase):
         with self.connect() as c:ch=dish_chapters(c,self.cid,"MOJO")
         intermediate=menu_exam_questions(ch,"intermediate",self.cid)
         rid=str(uuid.uuid4())
-        payload={"request_id":rid,"answers":answers(intermediate)}
+        intermediate_answers=answers(intermediate)
+        for index,question in enumerate(intermediate):
+            if question["type"]=="ingredients":
+                intermediate_answers[index]=" ".join(x[0] for x in question["ingredients"])
+                break
+        payload={"request_id":rid,"answers":intermediate_answers}
         got=self.client.post(path+"/intermediate/submit",headers=trainee,json=payload)
         self.assertEqual(got.status_code,200,got.text)
         self.assertEqual(got.json()["score"],100)
@@ -165,8 +179,10 @@ class StageIntegration(unittest.TestCase):
         self.assertEqual(len(status["questions"]),8)
         control=menu_exam_questions(ch,"control",self.cid)
         rid2=str(uuid.uuid4())
+        typed=[(" ".join(group[0] for group in q["ingredients"])
+                if q["type"]=="ingredients" else q["correct"]) for q in control]
         result=self.client.post(path+"/control/submit",headers=trainee,json={
-            "request_id":rid2,"answers":answers(control)})
+            "request_id":rid2,"answers":typed})
         self.assertEqual(result.status_code,200,result.text)
         self.assertEqual(result.json()["score"],100)
         finished=self.client.get(path,headers=trainee).json()
