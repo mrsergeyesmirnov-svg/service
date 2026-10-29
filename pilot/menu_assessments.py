@@ -4,6 +4,7 @@ No model calls, no auto-publishing. Existing legacy course and assignment
 attempts remain untouched. Both stages are frozen to manager-approved recipes.
 """
 import uuid
+import hashlib
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
 from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
@@ -25,10 +26,15 @@ def menu_exam_questions(chapters, stage, course_id):
         raise HTTPException(409, "У всех блюд должен быть проверенный состав минимум из двух компонентов")
     if stage == "intermediate":
         n = len(chapters)
-        take = min(n, 6)
+        take = min(n, 8)
         indices = ([0] if take == 1 else
                    [round(i * (n - 1) / (take - 1)) for i in range(take)])
-        return approved_card_questions([chapters[i] for i in indices], course_id)
+        # Cover the entire section, not several questions on the same dish.
+        # Stable order: GET and POST must grade identical frozen questions.
+        selection=[chapters[i] for i in indices]
+        selection.sort(key=lambda p:hashlib.sha256(
+            f"MOJO:{course_id}:{p['dish_id']}:intermediate".encode()).hexdigest())
+        return approved_card_questions(selection, course_id)
     return [
         {
             "type": "ingredients",

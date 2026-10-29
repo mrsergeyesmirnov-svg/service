@@ -69,7 +69,7 @@ async function main() {
   assert.match(code, /await generateCourseProposal\(cid\)/);
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261027-composition2/);
+  assert.match(html, /learning\.js\?v=20261029-recall1/);
   assert.match(html, /pilot\.js\?v=20261027-question1/);
   assert.match(html, /dishes\.js\?v=20261027-nav1/);
   assert.match(html, /wine_cards\.js\?v=20261026-1/);
