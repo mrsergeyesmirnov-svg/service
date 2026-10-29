@@ -5,7 +5,7 @@ Generated questions replace the old 'which ingredient is stated?' quiz when a
 course has curated dish chapters. Scoring requires no LLM.
 """
 import hashlib
-from questions import normalize
+from questions import normalize, ingredient_words
 
 
 def _order(values, salt):
@@ -22,6 +22,20 @@ def _ingredients(chapter):
             result.append(name)
             seen.add(key)
     return result
+
+
+def _overlaps_own(candidate, own_names):
+    """Do not use a more specific version of a correct ingredient as a decoy.
+
+    'Пармезан слайсы' cannot be a wrong option if the card says 'Пармезан'.
+    This is NOT a recipe synonym: we only filter ambiguous distractors.
+    """
+    words=set(ingredient_words(candidate))
+    for own in own_names:
+        approved=set(ingredient_words(own))
+        if words and approved and (words <= approved or approved <= words):
+            return True
+    return False
 
 
 def approved_card_questions(chapters, course_id):
@@ -43,7 +57,7 @@ def approved_card_questions(chapters, course_id):
                 continue
             for candidate in _ingredients(neighbor):
                 key = normalize(candidate)
-                if key not in own and len(candidate) <= 110:
+                if key not in own and len(candidate) <= 110 and not _overlaps_own(candidate, ingredients):
                     other.setdefault(key,candidate)
         decoys = _order(list(other.values()),title + "decoy")
         if index % 2 == 1 and len(ingredients) >= 2 and len(decoys) >= 2:
