@@ -19,7 +19,8 @@ class Cases(unittest.TestCase):
                     ingredients=['Alpha','Beta','Gamma','Delta','Epsilon','Zeta'])]
         q=approved_card_questions(cards,1)[0]
         self.assertEqual(len(q['ingredients']),6)
-        self.assertIn('все компоненты (6)',q['question'])
+        self.assertIn('весь состав',q['question'])
+        self.assertNotIn('(6)',q['question'], 'Количество компонентов не должно подсказать ответ')
         self.assertEqual(check(q,'Zeta;Epsilon;Delta;Gamma;Beta;Alpha')['fraction'],1)
         self.assertLess(check(q,'Alpha;Beta;Gamma;Delta;Epsilon')['fraction'],1)
         self.assertNotIn('ingredients',public_question(q))
