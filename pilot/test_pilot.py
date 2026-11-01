@@ -21,6 +21,9 @@ class Core(unittest.TestCase):
         self.assertEqual(entry.status_code, 200)
         paths = re.findall(r'(?:src|href)="(/pilot/[^"?]+)', entry.text)
         self.assertIn('/pilot/learner.css', paths)
+        self.assertIn('/pilot/telegram-web-app.js', paths)
+        self.assertNotIn('https://telegram.org/js/', entry.text)
+        self.assertLess(entry.text.index('/pilot/telegram-web-app.js'), entry.text.index('/pilot/pilot.js'))
         for path in paths:
             response = client.get(path)
             self.assertEqual(response.status_code, 200, path)

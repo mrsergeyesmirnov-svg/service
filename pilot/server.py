@@ -434,6 +434,9 @@ def results(aid:int,request:Request):
 
 @app.get('/pilot/')
 def index():return FileResponse(BASE/'index.html')
+@app.get('/pilot/telegram-web-app.js')
+def telegram_webapp_script():return FileResponse(BASE/'telegram-web-app.js',media_type='application/javascript')
+
 @app.get('/pilot/pilot.js')
 def script():return FileResponse(BASE/'pilot.js',media_type='application/javascript')
 @app.get('/pilot/pilot.css')
