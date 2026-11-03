@@ -192,7 +192,7 @@ async def invite(request:Request):
         token=secrets.token_urlsafe(24)
         c.execute("INSERT INTO invites(token,role,restaurant,created_by,expires_at) VALUES(%s,%s,%s,%s,now()+interval '7 days')",(token,role,u['restaurant'],u['id']))
         audit(c,u['id'],'invite',hashlib.sha256(token.encode()).hexdigest()[:12])
-    return {'url':f'https://t.me/skill_mojo_bot?start={token}','expires_days':7,'single_use':True,'manager_approval_required':True}
+    return {'url':f'https://t.me/skill_mojo_bot?start={token}','browser_url':URL+'?invite='+token,'expires_days':7,'single_use':True,'manager_approval_required':True}
 
 @app.get('/api/courses')
 def courses(request:Request):
