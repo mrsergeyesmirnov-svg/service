@@ -71,7 +71,7 @@ def attach(app, db, require, manager, audit):
                 raise HTTPException(403, "Недопустимая роль приглашения")
             # Negative identifiers cannot collide with positive Telegram IDs.
             for _ in range(5):
-                staff_id = -secrets.randbelow(2**60-1)-1
+                staff_id = -(10_000_000 + secrets.randbelow(90_000_000))
                 if not c.execute("SELECT 1 FROM staff WHERE id=%s", (staff_id,)).fetchone():
                     break
             else:
