@@ -7,6 +7,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
+from browser_auth import attach as attach_browser_auth
 from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
@@ -52,7 +53,7 @@ def validate_init(raw, token, now=None):
 def require(c, request):
     token = request.headers.get('authorization', '').removeprefix('Bearer ')
     u = c.execute('SELECT s.* FROM sessions t JOIN staff s ON s.id=t.staff_id WHERE t.token_hash=%s AND t.expires_at>now() AND s.active', (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
-    if not u: raise HTTPException(401, 'Откройте приложение заново из Telegram')
+    if not u: raise HTTPException(401, 'Войди в Академию заново')
     return u
 
 def manager(u):
@@ -113,6 +114,8 @@ app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
+
+attach_browser_auth(app, db, require, manager, audit)
 
 @app.get('/api/health')
 def health():
