@@ -92,7 +92,7 @@ def attach(app, db, require, manager, audit):
         d = await request.json()
         staff_id = d.get("staff_id")
         password = d.get("password", "")
-        if not isinstance(staff_id, str) or not staff_id.startswith("-") or not staff_id[1:].isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
+        if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
             raise HTTPException(401, "Неверный номер сотрудника или пароль")
         failure = None
         with db() as c:
@@ -124,6 +124,16 @@ def attach(app, db, require, manager, audit):
                 member = c.execute("SELECT * FROM staff WHERE id=%s",(int(staff_id),)).fetchone()
         if failure: raise failure
         return {"token":session,"user":member}
+
+    @app.post("/api/browser/logout")
+    def logout(request: Request):
+        raw = request.headers.get("authorization", "")
+        if not raw.startswith("Bearer "):
+            raise HTTPException(401, "Требуется авторизация")
+        with db() as c:
+            require(c,request)
+            c.execute("DELETE FROM sessions WHERE token_hash=%s", (hashlib.sha256(raw[7:].encode()).hexdigest(),))
+        return {"ok": True}
 
     @app.post("/api/browser/enable")
     async def enable_browser(request: Request):
