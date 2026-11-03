@@ -3,10 +3,32 @@ import hashlib
 import hmac
 import secrets
 import time
+import threading
+from collections import deque
 from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter()
 ITERATIONS = 310000
+_RATE_LOCK = threading.Lock()
+_RATE = {}
+
+def throttle(request):
+    """Per-process conservative burst limit; edge rate limiting is still required."""
+    # Do not trust X-Forwarded-For supplied by clients.
+    address = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _RATE_LOCK:
+        if len(_RATE) > 4096:
+            for key in list(_RATE):
+                if not _RATE[key] or _RATE[key][-1] < now - 900:
+                    del _RATE[key]
+        q = _RATE.setdefault(address, deque())
+        while q and q[0] < now - 900:
+            q.popleft()
+        if len(q) >= 15:
+            raise HTTPException(429, "Слишком много запросов. Попробуй позже")
+        q.append(now)
+
 
 def password_hash(password):
     if not isinstance(password, str) or not 12 <= len(password) <= 128:
@@ -26,6 +48,7 @@ def verify(password, stored):
 def attach(app, db, require, manager, audit):
     @app.post("/api/browser/register")
     async def register(request: Request):
+        throttle(request)
         d = await request.json()
         name = d.get("name", "")
         code = d.get("invite", "")
@@ -42,6 +65,8 @@ def attach(app, db, require, manager, audit):
             ).fetchone()
             if not invitation:
                 raise HTTPException(403, "Приглашение использовано или срок истёк")
+            if invitation["role"] not in ("trainee", "waiter"):
+                raise HTTPException(403, "Недопустимая роль приглашения")
             # Negative identifiers cannot collide with positive Telegram IDs.
             for _ in range(5):
                 staff_id = -secrets.randbelow(2**60-1)-1
@@ -63,10 +88,11 @@ def attach(app, db, require, manager, audit):
 
     @app.post("/api/browser/login")
     async def browser_login(request: Request):
+        throttle(request)
         d = await request.json()
         staff_id = d.get("staff_id")
         password = d.get("password", "")
-        if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
+        if not isinstance(staff_id, str) or not staff_id.startswith("-") or not staff_id[1:].isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
             raise HTTPException(401, "Неверный номер сотрудника или пароль")
         failure = None
         with db() as c:
@@ -74,11 +100,12 @@ def attach(app, db, require, manager, audit):
                 """SELECT b.password_hash,b.failed_attempts,b.locked_until,s.id,s.active FROM browser_credentials b JOIN staff s ON s.id=b.staff_id
                    WHERE b.staff_id=%s FOR UPDATE""",(int(staff_id),)
             ).fetchone()
-            if credential and credential["locked_until"] and credential["locked_until"].timestamp()>time.time():
-                raise HTTPException(429, "Слишком много попыток. Повтори через 15 минут")
+            locked = bool(credential and credential["locked_until"] and credential["locked_until"].timestamp()>time.time())
             # Do equivalent work for missing users to reduce account enumeration.
             valid = verify(password, credential["password_hash"] if credential else "00"*16 + ":" + "00"*32)
-            if not credential or not valid:
+            if locked:
+                failure = HTTPException(429, "Слишком много попыток. Повтори через 15 минут")
+            elif not credential or not valid:
                 if credential:
                     attempts = credential["failed_attempts"]+1
                     c.execute(
