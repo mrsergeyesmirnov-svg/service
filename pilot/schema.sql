@@ -324,3 +324,11 @@ CREATE INDEX IF NOT EXISTS onboarding_diagnostics_recent
 ALTER TABLE onboarding_feedback ALTER COLUMN rating DROP NOT NULL;
 ALTER TABLE onboarding_feedback ALTER COLUMN clarity DROP NOT NULL;
 ALTER TABLE onboarding_feedback ADD COLUMN IF NOT EXISTS reflection JSONB;
+
+-- Browser access: staff IDs remain the identity used by all progress tables.
+CREATE TABLE IF NOT EXISTS browser_credentials (
+ staff_id BIGINT PRIMARY KEY REFERENCES staff(id) ON DELETE CASCADE,
+ password_hash TEXT NOT NULL,
+ failed_attempts INT NOT NULL DEFAULT 0,
+ locked_until TIMESTAMPTZ
+);
