@@ -59,7 +59,7 @@ def attach(app, db, require, manager, audit):
             )
             c.execute("UPDATE invites SET used_by=%s WHERE token=%s",(staff_id,code))
             audit(c,staff_id,"browser:registered",invitation["restaurant"])
-        return {"pending": True, "message": "Заявка отправлена. Дождись подтверждения менеджера."}
+        return {"pending": True, "staff_id": staff_id, "message": "Заявка отправлена. Дождись подтверждения менеджера."}
 
     @app.post("/api/browser/login")
     async def browser_login(request: Request):
@@ -70,13 +70,13 @@ def attach(app, db, require, manager, audit):
             raise HTTPException(401, "Неверный номер сотрудника или пароль")
         with db() as c:
             credential = c.execute(
-                """SELECT b.*,s.* FROM browser_credentials b JOIN staff s ON s.id=b.staff_id
+                """SELECT b.password_hash,b.failed_attempts,b.locked_until,s.id,s.active FROM browser_credentials b JOIN staff s ON s.id=b.staff_id
                    WHERE b.staff_id=%s FOR UPDATE""",(int(staff_id),)
             ).fetchone()
             if credential and credential["locked_until"] and credential["locked_until"].timestamp()>time.time():
                 raise HTTPException(429, "Слишком много попыток. Повтори через 15 минут")
             # Do equivalent work for missing users to reduce account enumeration.
-            valid = verify(password, credential["password_hash"] if credential else password_hash("placeholder-password"))
+            valid = verify(password, credential["password_hash"] if credential else "00"*16 + ":" + "00"*32)
             if not credential or not valid:
                 if credential:
                     attempts = credential["failed_attempts"]+1
