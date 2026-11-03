@@ -103,6 +103,9 @@ async def limits(request, call_next):
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
+    response.headers['X-Frame-Options']='DENY'
+    response.headers['Permissions-Policy']='camera=(), geolocation=(), payment=()'
+    response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
