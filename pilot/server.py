@@ -105,7 +105,8 @@ async def limits(request, call_next):
     response.headers['Referrer-Policy']='no-referrer'
     response.headers['X-Frame-Options']='DENY'
     response.headers['Permissions-Policy']='camera=(), geolocation=(), payment=()'
-    response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
+    if request.url.scheme == 'https' or request.headers.get('x-forwarded-proto') == 'https':
+        response.headers['Strict-Transport-Security']='max-age=31536000'
     return response
 
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
@@ -179,9 +180,10 @@ def approve_member(staff_id:int, request:Request):
             raise HTTPException(409,'Учётная запись создана не через приглашение')
         if target['active']:return {'active':True,'already_approved':True}
         c.execute('UPDATE staff SET active=true WHERE id=%s',(staff_id,))
-        c.execute('''INSERT INTO outbox(recipient,message,dedupe)
-              VALUES(%s,%s,%s) ON CONFLICT(dedupe) DO NOTHING''',
-              (staff_id,'Доступ к Академии MOJO подтверждён. Теперь можно открыть обучение в Telegram.',f'approval:{staff_id}'))
+        if staff_id > 0:
+            c.execute('''INSERT INTO outbox(recipient,message,dedupe)
+                  VALUES(%s,%s,%s) ON CONFLICT(dedupe) DO NOTHING''',
+                  (staff_id,'Доступ к Академии MOJO подтверждён. Теперь можно открыть обучение в Telegram.',f'approval:{staff_id}'))
         audit(c,u['id'],'staff:approved',staff_id)
         return {'active':True,'already_approved':False}
 
