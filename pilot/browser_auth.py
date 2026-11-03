@@ -50,9 +50,13 @@ def attach(app, db, require, manager, audit):
     async def register(request: Request):
         throttle(request)
         d = await request.json()
+        if not isinstance(d, dict):
+            raise HTTPException(422, "Неверный формат запроса")
         name = d.get("name", "")
         code = d.get("invite", "")
         password = d.get("password", "")
+        if not isinstance(d, dict):
+            raise HTTPException(422, "Неверный формат запроса")
         if not isinstance(name, str) or not 2 <= len(name.strip()) <= 120:
             raise HTTPException(422, "Укажи имя и фамилию")
         if not isinstance(code, str) or not 10 <= len(code) <= 200:
@@ -90,6 +94,8 @@ def attach(app, db, require, manager, audit):
     async def browser_login(request: Request):
         throttle(request)
         d = await request.json()
+        if not isinstance(d, dict):
+            raise HTTPException(422, "Неверный формат запроса")
         staff_id = d.get("staff_id")
         password = d.get("password", "")
         if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
@@ -138,6 +144,7 @@ def attach(app, db, require, manager, audit):
     @app.post("/api/browser/enable")
     async def enable_browser(request: Request):
         d=await request.json()
+        if not isinstance(d,dict): raise HTTPException(422, "Неверный формат запроса")
         stored=password_hash(d.get("password"))
         with db() as c:
             u=require(c,request)
