@@ -68,6 +68,7 @@ def attach(app, db, require, manager, audit):
         password = d.get("password", "")
         if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
             raise HTTPException(401, "Неверный номер сотрудника или пароль")
+        failure = None
         with db() as c:
             credential = c.execute(
                 """SELECT b.password_hash,b.failed_attempts,b.locked_until,s.id,s.active FROM browser_credentials b JOIN staff s ON s.id=b.staff_id
@@ -85,14 +86,16 @@ def attach(app, db, require, manager, audit):
                            locked_until=CASE WHEN %s>=5 THEN now()+interval '15 minutes' ELSE NULL END
                            WHERE staff_id=%s""",(attempts,attempts,int(staff_id))
                     )
-                raise HTTPException(401, "Неверный номер сотрудника или пароль")
-            if not credential["active"]:
-                raise HTTPException(403, "Ожидается подтверждение менеджера")
-            c.execute("UPDATE browser_credentials SET failed_attempts=0,locked_until=NULL WHERE staff_id=%s",(int(staff_id),))
-            session = secrets.token_urlsafe(32)
-            c.execute("INSERT INTO sessions(token_hash,staff_id,expires_at) VALUES(%s,%s,now()+interval '8 hours')",
+                failure = HTTPException(401, "Неверный номер сотрудника или пароль")
+            elif not credential["active"]:
+                failure = HTTPException(403, "Ожидается подтверждение менеджера")
+            if failure is None:
+                c.execute("UPDATE browser_credentials SET failed_attempts=0,locked_until=NULL WHERE staff_id=%s",(int(staff_id),))
+                session = secrets.token_urlsafe(32)
+                c.execute("INSERT INTO sessions(token_hash,staff_id,expires_at) VALUES(%s,%s,now()+interval '8 hours')",
                       (hashlib.sha256(session.encode()).hexdigest(),int(staff_id)))
-            member = c.execute("SELECT * FROM staff WHERE id=%s",(int(staff_id),)).fetchone()
+                member = c.execute("SELECT * FROM staff WHERE id=%s",(int(staff_id),)).fetchone()
+        if failure: raise failure
         return {"token":session,"user":member}
 
     @app.post("/api/browser/enable")
