@@ -45,3 +45,57 @@ class BrowserSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+import os
+import test_pilot
+
+@unittest.skipUnless(os.getenv('DATABASE_URL'), 'requires isolated PostgreSQL schema')
+class BrowserIntegration(unittest.TestCase):
+    setUp = test_pilot.Integration.setUp
+    tearDown = test_pilot.Integration.tearDown
+    auth = test_pilot.Integration.auth
+
+    def test_invite_approval_permissions_and_logout(self):
+        _RATE.clear()
+        owner = self.auth(999)
+        invite = self.client.post('/api/invites', json={'role':'trainee'}, headers=owner).json()['browser_url'].split('invite=')[1]
+        payload = {'invite':invite, 'name':'Browser Student', 'password':'Long password 2026!'}
+        response = self.client.post('/api/browser/register', json=payload)
+        self.assertEqual(response.status_code,200,response.text)
+        uid = response.json()['staff_id']
+        self.assertLess(abs(uid),2**53)
+        login = {'staff_id':str(uid),'password':payload['password']}
+        self.assertEqual(self.client.post('/api/browser/login',json=login).status_code,403)
+        self.assertEqual(self.client.post('/api/browser/register',json=payload).status_code,403)
+        self.assertEqual(self.client.post(f'/api/team/{uid}/approve',headers=self.auth(103)).status_code,403)
+        self.assertEqual(self.client.post(f'/api/team/{uid}/approve',headers=owner).status_code,200)
+        response=self.client.post('/api/browser/login',json=login)
+        self.assertEqual(response.status_code,200,response.text)
+        headers={'Authorization':'Bearer '+response.json()['token']}
+        self.assertEqual(self.client.get('/api/team',headers=headers).status_code,403)
+        self.assertEqual(self.client.post('/api/browser/logout',headers=headers).status_code,200)
+        self.assertEqual(self.client.get('/api/courses',headers=headers).status_code,401)
+
+    def test_existing_identity_password_rotation_and_blocking(self):
+        _RATE.clear()
+        old=self.auth(101)
+        payload={'password':'Long password 2026!'}
+        self.assertEqual(self.client.post('/api/browser/enable',headers=old,json=payload).status_code,200)
+        self.assertEqual(self.client.get('/api/courses',headers=old).status_code,401)
+        response=self.client.post('/api/browser/login',json={'staff_id':'101',**payload})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['user']['id'],101)
+        headers={'Authorization':'Bearer '+response.json()['token']}
+        import server
+        with server.db() as c:c.execute('UPDATE staff SET active=false WHERE id=101')
+        self.assertEqual(self.client.get('/api/courses',headers=headers).status_code,401)
+
+    def test_bad_ids_and_login_lock(self):
+        _RATE.clear()
+        headers=self.auth(101)
+        self.client.post('/api/browser/enable',headers=headers,json={'password':'Long password 2026!'})
+        for uid in ['--1','9999999999999999999']:
+            self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':uid,'password':'wrong'}).status_code,401)
+        for _ in range(5):
+            self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':'101','password':'wrong'}).status_code,401)
+        self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':'101','password':'Long password 2026!'}).status_code,429)

@@ -47,9 +47,8 @@ def verify(password, stored):
 
 def attach(app, db, require, manager, audit):
     @app.post("/api/browser/register")
-    async def register(request: Request):
+    def register(request: Request, d: dict):
         throttle(request)
-        d = await request.json()
         if not isinstance(d, dict):
             raise HTTPException(422, "Неверный формат запроса")
         name = d.get("name", "")
@@ -89,14 +88,19 @@ def attach(app, db, require, manager, audit):
         return {"pending": True, "staff_id": staff_id, "message": "Заявка отправлена. Дождись подтверждения менеджера."}
 
     @app.post("/api/browser/login")
-    async def browser_login(request: Request):
+    def browser_login(request: Request, d: dict):
         throttle(request)
-        d = await request.json()
         if not isinstance(d, dict):
             raise HTTPException(422, "Неверный формат запроса")
         staff_id = d.get("staff_id")
         password = d.get("password", "")
-        if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>20 or not isinstance(password,str) or len(password)>128:
+        if not isinstance(staff_id, str) or not staff_id.lstrip("-").isdigit() or len(staff_id)>19 or not isinstance(password,str) or len(password)>128:
+            raise HTTPException(401, "Неверный номер сотрудника или пароль")
+        try:
+            staff_id = int(staff_id)
+        except ValueError:
+            raise HTTPException(401, "Неверный номер сотрудника или пароль")
+        if not -(2**63) <= staff_id < 2**63:
             raise HTTPException(401, "Неверный номер сотрудника или пароль")
         failure = None
         with db() as c:
@@ -140,17 +144,18 @@ def attach(app, db, require, manager, audit):
         return {"ok": True}
 
     @app.post("/api/browser/enable")
-    async def enable_browser(request: Request):
-        d=await request.json()
+    def enable_browser(request: Request, d: dict):
         if not isinstance(d,dict): raise HTTPException(422, "Неверный формат запроса")
-        stored=password_hash(d.get("password"))
+        throttle(request)
         with db() as c:
             u=require(c,request)
+            stored=password_hash(d.get("password"))
             # A logged-in user may add browser access only to their own account.
             c.execute(
                 """INSERT INTO browser_credentials(staff_id,password_hash) VALUES(%s,%s)
                    ON CONFLICT(staff_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,
                    failed_attempts=0,locked_until=NULL""",(u["id"],stored)
             )
+            c.execute("DELETE FROM sessions WHERE staff_id=%s", (u["id"],))
             audit(c,u["id"],"browser:enabled",u["id"])
         return {"staff_id":u["id"]}

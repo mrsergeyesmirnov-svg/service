@@ -103,7 +103,7 @@ async def limits(request, call_next):
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
-    response.headers['X-Frame-Options']='DENY'
+    response.headers['Content-Security-Policy']="frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org"
     response.headers['Permissions-Policy']='camera=(), geolocation=(), payment=()'
     if request.url.scheme == 'https' or request.headers.get('x-forwarded-proto') == 'https':
         response.headers['Strict-Transport-Security']='max-age=31536000'
@@ -119,7 +119,7 @@ app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
 
-attach_browser_auth(app, db, require, manager, audit)
+attach_browser_auth(app, lambda: db(), require, manager, audit)
 
 @app.get('/api/health')
 def health():
