@@ -55,8 +55,6 @@ def attach(app, db, require, manager, audit):
         name = d.get("name", "")
         code = d.get("invite", "")
         password = d.get("password", "")
-        if not isinstance(d, dict):
-            raise HTTPException(422, "Неверный формат запроса")
         if not isinstance(name, str) or not 2 <= len(name.strip()) <= 120:
             raise HTTPException(422, "Укажи имя и фамилию")
         if not isinstance(code, str) or not 10 <= len(code) <= 200:
