@@ -7,6 +7,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
+from browser_auth import attach as attach_browser_auth
 from fastapi.responses import FileResponse
 from cases_api import make_router
 from learning import make_learning_router
@@ -52,7 +53,7 @@ def validate_init(raw, token, now=None):
 def require(c, request):
     token = request.headers.get('authorization', '').removeprefix('Bearer ')
     u = c.execute('SELECT s.* FROM sessions t JOIN staff s ON s.id=t.staff_id WHERE t.token_hash=%s AND t.expires_at>now() AND s.active', (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
-    if not u: raise HTTPException(401, 'Откройте приложение заново из Telegram')
+    if not u: raise HTTPException(401, 'Войди в Академию заново')
     return u
 
 def manager(u):
@@ -102,6 +103,10 @@ async def limits(request, call_next):
     response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
+    response.headers['Content-Security-Policy']="frame-ancestors 'self' https://web.telegram.org https://*.web.telegram.org"
+    response.headers['Permissions-Policy']='camera=(), geolocation=(), payment=()'
+    if request.url.scheme == 'https' or request.headers.get('x-forwarded-proto') == 'https':
+        response.headers['Strict-Transport-Security']='max-age=31536000'
     return response
 
 app.include_router(make_router(lambda: db(), require, manager, scope, audit))
@@ -114,6 +119,7 @@ app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
 
+attach_browser_auth(app, lambda: db(), require, manager, audit)
 def telegram_poll_fresh(last_ok, now=None):
     """True only if our bot worker recently completed a real getUpdates call."""
     try:
@@ -191,9 +197,10 @@ def approve_member(staff_id:int, request:Request):
             raise HTTPException(409,'Учётная запись создана не через приглашение')
         if target['active']:return {'active':True,'already_approved':True}
         c.execute('UPDATE staff SET active=true WHERE id=%s',(staff_id,))
-        c.execute('''INSERT INTO outbox(recipient,message,dedupe)
-              VALUES(%s,%s,%s) ON CONFLICT(dedupe) DO NOTHING''',
-              (staff_id,'Доступ к Академии MOJO подтверждён. Теперь можно открыть обучение в Telegram.',f'approval:{staff_id}'))
+        if staff_id > 0:
+            c.execute('''INSERT INTO outbox(recipient,message,dedupe)
+                  VALUES(%s,%s,%s) ON CONFLICT(dedupe) DO NOTHING''',
+                  (staff_id,'Доступ к Академии MOJO подтверждён. Теперь можно открыть обучение в Telegram.',f'approval:{staff_id}'))
         audit(c,u['id'],'staff:approved',staff_id)
         return {'active':True,'already_approved':False}
 
@@ -207,7 +214,7 @@ async def invite(request:Request):
         token=secrets.token_urlsafe(24)
         c.execute("INSERT INTO invites(token,role,restaurant,created_by,expires_at) VALUES(%s,%s,%s,%s,now()+interval '7 days')",(token,role,u['restaurant'],u['id']))
         audit(c,u['id'],'invite',hashlib.sha256(token.encode()).hexdigest()[:12])
-    return {'url':f'https://t.me/skill_mojo_bot?start={token}','expires_days':7,'single_use':True,'manager_approval_required':True}
+    return {'url':f'https://t.me/skill_mojo_bot?start={token}','browser_url':URL+'?invite='+token,'expires_days':7,'single_use':True,'manager_approval_required':True}
 
 @app.get('/api/courses')
 def courses(request:Request):
