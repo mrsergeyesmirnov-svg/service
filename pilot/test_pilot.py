@@ -14,6 +14,15 @@ def signed(uid=101,age=0):
     return urlencode(d)
 
 class Core(unittest.TestCase):
+    def test_telegram_bot_health_requires_recent_successful_poll(self):
+        now = 1800000000
+        self.assertFalse(server.telegram_poll_fresh(None, now=now))
+        self.assertFalse(server.telegram_poll_fresh('not-an-epoch', now=now))
+        self.assertFalse(server.telegram_poll_fresh(str(now + 10), now=now))
+        self.assertTrue(server.telegram_poll_fresh(str(now - 30), now=now))
+        self.assertTrue(server.telegram_poll_fresh(str(now - 120), now=now))
+        self.assertFalse(server.telegram_poll_fresh(str(now - 121), now=now))
+
     def test_entrypoint_assets_are_served(self):
         import re
         client = TestClient(server.app)

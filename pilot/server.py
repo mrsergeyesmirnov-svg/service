@@ -120,11 +120,28 @@ app.include_router(make_events_router(lambda: db(), require, manager, scope, aud
 app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
 
 attach_browser_auth(app, lambda: db(), require, manager, audit)
+def telegram_poll_fresh(last_ok, now=None):
+    """True only if our bot worker recently completed a real getUpdates call."""
+    try:
+        age = (time.time() if now is None else now) - int(last_ok)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= age <= 120
+
 
 @app.get('/api/health')
 def health():
-    with db() as c: c.execute('SELECT 1')
-    return {'database':True,'telegram_configured':bool(TOKEN and OWNER)}
+    # DB availability and Telegram connectivity are independent. A configured
+    # BOT_TOKEN alone is NOT evidence that api.telegram.org can be reached.
+    with db() as c:
+        c.execute('SELECT 1')
+        row = c.execute("SELECT value FROM settings WHERE key='telegram_poll_last_ok'").fetchone()
+    connected = bool(TOKEN and OWNER and telegram_poll_fresh(row['value'] if row else None))
+    return {
+        'database': True,
+        'telegram_configured': bool(TOKEN and OWNER),
+        'telegram_bot_connected': connected,
+    }
 
 @app.post('/api/login')
 async def login(request:Request):
