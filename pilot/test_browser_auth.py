@@ -99,3 +99,28 @@ class BrowserIntegration(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':'101','password':'wrong'}).status_code,401)
         self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':'101','password':'Long password 2026!'}).status_code,429)
+
+    def test_setup_link_single_use_expiry_and_identity(self):
+        import hashlib, server
+        _RATE.clear()
+        old = self.auth(101)
+        token = 'a' * 43
+        with server.db() as c:
+            c.execute("INSERT INTO browser_password_setup VALUES(%s,%s,now()+interval '30 minutes')", (101,hashlib.sha256(token.encode()).hexdigest()))
+        payload={'token':token,'password':'Long password 2026!', 'staff_id':999}
+        self.assertEqual(self.client.post('/api/browser/setup-password',json={**payload,'token':'b'*43}).status_code,403)
+        self.assertEqual(self.client.post('/api/browser/setup-password',json={**payload,'password':'short'}).status_code,422)
+        response=self.client.post('/api/browser/setup-password',json=payload)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['staff_id'],101)
+        self.assertEqual(self.client.get('/api/courses',headers=old).status_code,401)
+        self.assertEqual(self.client.post('/api/browser/setup-password',json=payload).status_code,403)
+        self.assertEqual(self.client.post('/api/browser/login',json={'staff_id':'101','password':payload['password']}).status_code,200)
+        with server.db() as c:
+            c.execute("INSERT INTO browser_password_setup VALUES(%s,%s,now()-interval '1 minute')", (101,hashlib.sha256(token.encode()).hexdigest()))
+        self.assertEqual(self.client.post('/api/browser/setup-password',json=payload).status_code,403)
+        with server.db() as c:
+            c.execute("UPDATE browser_password_setup SET expires_at=now()+interval '30 minutes'")
+            c.execute("UPDATE staff SET active=false WHERE id=101")
+        self.assertEqual(self.client.post('/api/browser/setup-password',json=payload).status_code,403)
+        self.assertEqual(self.client.get('/pilot/setup-password').status_code,200)

@@ -332,3 +332,10 @@ CREATE TABLE IF NOT EXISTS browser_credentials (
  failed_attempts INT NOT NULL DEFAULT 0,
  locked_until TIMESTAMPTZ
 );
+
+-- Short-lived, single-use password setup links issued only by a local operator.
+CREATE TABLE IF NOT EXISTS browser_password_setup (
+ staff_id BIGINT PRIMARY KEY REFERENCES staff(id) ON DELETE CASCADE,
+ token_hash TEXT UNIQUE NOT NULL,
+ expires_at TIMESTAMPTZ NOT NULL
+);

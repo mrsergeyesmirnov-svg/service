@@ -1,4 +1,6 @@
 """Browser fallback for the Academy. Never trust a Telegram ID supplied by a browser."""
+from pathlib import Path
+from fastapi.responses import FileResponse
 import hashlib
 import hmac
 import secrets
@@ -46,6 +48,33 @@ def verify(password, stored):
         return False
 
 def attach(app, db, require, manager, audit):
+    @app.get("/pilot/setup-password")
+    def setup_page():
+        return FileResponse(Path(__file__).with_name("setup-password.html"))
+
+    @app.post("/api/browser/setup-password")
+    def setup_password(request: Request, d: dict):
+        throttle(request)
+        token = d.get("token", "")
+        if not isinstance(token, str) or not 40 <= len(token) <= 100:
+            raise HTTPException(403, "Ссылка недействительна или срок истёк")
+        with db() as c:
+            row = c.execute("""SELECT p.staff_id FROM browser_password_setup p
+                JOIN staff s ON s.id=p.staff_id
+                WHERE p.token_hash=%s AND p.expires_at>now() AND s.active
+                FOR UPDATE OF p, s""", (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+            if not row:
+                raise HTTPException(403, "Ссылка недействительна или срок истёк")
+            stored = password_hash(d.get("password"))
+            uid = row["staff_id"]
+            c.execute("""INSERT INTO browser_credentials(staff_id,password_hash) VALUES(%s,%s)
+                ON CONFLICT(staff_id) DO UPDATE SET password_hash=EXCLUDED.password_hash,
+                failed_attempts=0,locked_until=NULL""", (uid, stored))
+            c.execute("DELETE FROM sessions WHERE staff_id=%s", (uid,))
+            c.execute("DELETE FROM browser_password_setup WHERE staff_id=%s", (uid,))
+            audit(c, uid, "browser:password_setup", uid)
+        return {"staff_id": uid}
+
     @app.post("/api/browser/register")
     def register(request: Request, d: dict):
         throttle(request)
