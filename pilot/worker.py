@@ -87,12 +87,22 @@ if __name__=='__main__':
     if telegram('getWebhookInfo').get('url'):raise SystemExit('Existing webhook detected; not changing it automatically')
     Thread(target=deliver_loop,daemon=True,name='academy-outbox').start()
     print('Worker ready',flush=True)
+    last_poll_heartbeat = 0.0
     while True:
         try:
             with db() as c:
                 item=c.execute("SELECT value FROM settings WHERE key='telegram_offset'").fetchone()
                 offset=int(item['value']) if item else 0
             updates=telegram('getUpdates',offset=offset,timeout=2,allowed_updates=['message'])
+            # Update at most every 30 seconds, and only after a successful
+            # Telegram API response. Never treat "Worker ready" as online proof.
+            if time.monotonic() - last_poll_heartbeat >= 30:
+                with db() as c:
+                    c.execute(
+                        "INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        ('telegram_poll_last_ok', str(int(time.time()))),
+                    )
+                last_poll_heartbeat = time.monotonic()
             for update in updates:
                 process(update)
                 with db() as c:c.execute("INSERT INTO settings VALUES('telegram_offset',%s) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(update['update_id']+1),))
