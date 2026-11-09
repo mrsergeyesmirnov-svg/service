@@ -1,0 +1,70 @@
+name: Deploy Academy TGCloud start handler
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/tgcloud-start-deploy.yml]
+permissions:
+  contents: read
+concurrency:
+  group: academy-tgcloud-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test and deploy start handler
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          (async () => {
+           const source = fs.readFileSync('tgcloud/handlers/message.js','utf8');
+           const calls = [];
+           globalThis.__mojoTestApi = {sendMessage: async x => calls.push(x)};
+           const mocked = source.replace("import { api } from 'sdk';", "const api = globalThis.__mojoTestApi;");
+           const {default: handler} = await import('data:text/javascript;base64,'+Buffer.from(mocked).toString('base64'));
+           const msg = text => ({text,chat:{type:'private',id:123},from:{id:123}});
+           await handler(msg('/start')); assert.equal(calls.length,1);
+           assert.equal(calls[0].reply_markup.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/');
+           await handler({...msg('/start'),chat:{type:'group',id:123}}); assert.equal(calls.length,1);
+           await handler({...msg('/start'),from:{id:456}}); assert.equal(calls.length,1);
+           await handler(msg('/starter')); assert.equal(calls.length,1);
+           await handler(msg('/start@skill_mojo_bot')); assert.equal(calls.length,2);
+           await handler(msg('/start invite_token')); assert.match(calls.at(-1).text,/пока недоступна/);
+           delete globalThis.__mojoTestApi;
+           console.log('Handler tests passed: private chat, identity, command, button, invitation disclosure.');
+           const token=process.env.TGCLOUD_TOKEN;
+           if(!/^app\d+:[A-Za-z0-9_-]+$/.test(token||'')) throw new Error('Missing/invalid TGCLOUD_TOKEN');
+           const base='https://cloud.telegram.org/'+token.split(':')[0]+'/manage';
+           async function request(path,body){
+             const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(30000)});
+             if(!r.ok) throw new Error(path+': HTTP '+r.status);
+             const data=await r.json(); if(!data.ok) throw new Error(path+': API rejected request');
+             return data.result;
+           }
+           // Check the token belongs to our bot without sending a message.
+           const identity=await request('/run',{module:'handlers/check',sources:{'handlers/check':"import { api } from 'sdk'; export default async function(){const me=await api.getMe({});return me.username;}"},args:{},ctx:{}});
+           if(identity.result!=='skill_mojo_bot') throw new Error('Bot identity mismatch; deployment stopped');
+           console.log('Bot identity verified: @skill_mojo_bot');
+           const before=await request('/get');
+           const modules=before.canonical_modules||{};
+           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && modules['handlers/message']===source)) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
+           const compile=await request('/run',{module:'handlers/message',sources:{'handlers/message':source},args:{chat:{type:'group',id:0}},ctx:{}});
+           if(compile.result?.__error) throw new Error('Runtime validation failed');
+           const deployed=await request('/deploy',{expected_revision:before.revision,manifest:['handlers/message'],changed_sources:{'handlers/message':source}});
+           console.log('Deployed revision: '+deployed.revision);
+           let hook=await request('/webhook');
+           if(!hook.in_sync || !hook.url) hook=await request('/webhook/sync',{});
+           if(!hook.in_sync || !hook.url || !hook.allowed_updates?.includes('message')) throw new Error('Message delivery is not configured');
+           const after=await request('/get');
+           assert.equal(after.canonical_modules['handlers/message'],source);
+           console.log(JSON.stringify({deployed:true,message_delivery_enabled:true,in_sync:hook.in_sync,pending:hook.pending_update_count,has_delivery_error:Boolean(hook.last_error_message)}));
+          })().catch(e=>{console.error(e.message);process.exit(1)});
+          
+          NODE
