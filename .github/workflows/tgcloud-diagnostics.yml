@@ -1,0 +1,54 @@
+name: TGCloud bot diagnostics
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/tgcloud-diagnostics.yml]
+permissions: {}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect deployed handlers and Telegram delivery
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          (async () => {
+            const token = process.env.TGCLOUD_TOKEN;
+            if (!token || !/^app\d+:[A-Za-z0-9_-]+$/.test(token)) {
+              console.error('TGCLOUD_TOKEN is missing or has an invalid format.');
+              process.exit(1);
+            }
+            const base = 'https://cloud.telegram.org/' + token.split(':')[0] + '/manage';
+            async function read(path) {
+              const r = await fetch(base + path, {
+                headers: {Authorization: 'Bearer ' + token},
+                signal: AbortSignal.timeout(20000),
+                redirect: 'error'
+              });
+              if (!r.ok) throw new Error(path + ': HTTP ' + r.status);
+              const data = await r.json();
+              if (!data.ok) throw new Error(path + ': API rejected request');
+              return data.result;
+            }
+            const state = await read('/get');
+            console.log(JSON.stringify({
+              revision: state.revision,
+              modules: Object.keys(state.canonical_modules || {}),
+              message_handler_present: Object.hasOwn(state.canonical_modules || {}, 'handlers/message')
+            }));
+            const hook = await read('/webhook');
+            console.log(JSON.stringify({
+              webhook_set: Boolean(hook.url),
+              in_sync: hook.in_sync,
+              allowed_updates: hook.allowed_updates,
+              expected_updates: hook.expected?.allowed_updates,
+              pending_update_count: hook.pending_update_count,
+              last_error_date: hook.last_error_date,
+              has_delivery_error: Boolean(hook.last_error_message)
+            }));
+          })().catch(e => { console.error(e.message); process.exit(1); });
+          NODE
