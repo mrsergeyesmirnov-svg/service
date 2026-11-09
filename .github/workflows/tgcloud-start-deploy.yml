@@ -44,12 +44,12 @@ jobs:
            const base='https://cloud.telegram.org/'+token.split(':')[0]+'/manage';
            async function request(path,body){
              const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(30000)});
-             if(!r.ok) throw new Error(path+': HTTP '+r.status);
-             const data=await r.json(); if(!data.ok) throw new Error(path+': API rejected request');
+             const data=await r.json();
+             if(!r.ok) throw new Error(path+': HTTP '+r.status+' '+String(data.description||data.error_code||'').replaceAll(token,'[redacted]').slice(0,300)); if(!data.ok) throw new Error(path+': API rejected request');
              return data.result;
            }
            // Check the token belongs to our bot without sending a message.
-           const identity=await request('/run',{module:'handlers/check',sources:{'handlers/check':"import { api } from 'sdk'; export default async function(){const me=await api.getMe({});return me.username;}"},args:{},ctx:{}});
+           const identity=await request('/run',{module:'handlers/message',sources:{'handlers/message':"import { api } from 'sdk'; export default async function(){const me=await api.getMe({});return me.username;}"},args:{},ctx:{}});
            if(identity.result!=='skill_mojo_bot') throw new Error('Bot identity mismatch; deployment stopped');
            console.log('Bot identity verified: @skill_mojo_bot');
            const before=await request('/get');
