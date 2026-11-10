@@ -1,3 +1,4 @@
+function recertEntry(){return user?.role==='waiter'?'<section class="card"><h2>Переаттестация официантов</h2><p>Основное меню: 40 случайных вопросов на полный состав блюд из 7 разделов. Проходной балл — 80%.</p>'+btn('Начать / продолжить','recert-start','','lime-action')+'</section>':''}
 async function loadOptionalWine(cid){
  try{return await api('wine-cards/'+cid)}catch(err){error('Карточки вина временно недоступны. Можно продолжить изучение курса.');return {pairs:[],ratings:{}}}
 }

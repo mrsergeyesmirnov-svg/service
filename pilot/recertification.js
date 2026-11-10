@@ -1,5 +1,4 @@
 let recert=null,recertIndex=0,recertBusy=false;
-function recertEntry(){return user?.role==='waiter'?'<section class="card"><h2>Переаттестация официантов</h2><p>Основное меню: 40 случайных вопросов на полный состав блюд из 7 разделов. Проходной балл — 80%.</p>'+btn('Начать / продолжить','recert-start','','lime-action')+'</section>':''}
 function recertRender(){
  const q=recert.questions[recertIndex];
  $('#app').innerHTML='<h1>Переаттестация по основному меню</h1><p>'+esc(q.section)+' · Вопрос '+(recertIndex+1)+' из 40</p><progress max="40" value="'+(recertIndex+1)+'"></progress><form id="recert-form" class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'answer',recert.answers[recertIndex])+'<div class="actions">'+(recertIndex?'<button type="button" id="recert-back" class="secondary">← Назад</button>':'')+'<button type="submit">'+(recertIndex===39?'Завершить тест':'Сохранить и дальше →')+'</button></div><p role="status" id="recert-status">Ответы сохраняются при переходе между вопросами.</p></form>';
