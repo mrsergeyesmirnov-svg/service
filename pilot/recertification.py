@@ -185,7 +185,7 @@ def make_router(db, require, manager, scope, audit):
             if not row['submitted_at']:
                 if any(not isinstance(a, str) or not a.strip() for a in row['answers']):
                     raise HTTPException(422, f"Ответь на все {len(row['questions'])} вопросов")
-                score = grade_questions(row['questions'], row['answers'])
+                score = grade_questions([dict(q, lenient_recall=True) for q in row['questions']], row['answers'])
                 row = c.execute('''UPDATE recertification_attempts
                     SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
                     (score, score >= row['pass_score'], aid)).fetchone()
@@ -193,7 +193,7 @@ def make_router(db, require, manager, scope, audit):
                     c.execute('UPDATE recertification_assignments SET completed_at=now() WHERE staff_id=%s AND restaurant=%s AND completed_at IS NULL',
                               (u['id'], u['restaurant']))
                 audit(c, u['id'], 'recertification:submit', aid)
-            return dict(public(row), review=[dict(q, answer=a, assessment=check(q, a))
+            return dict(public(row), review=[dict(q, answer=a, assessment=check(dict(q, lenient_recall=True), a))
                 for q, a in zip(row['questions'], row['answers'])])
 
     return router
