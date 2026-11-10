@@ -1,7 +1,7 @@
 let recert=null,recertIndex=0,recertBusy=false;
 function recertRender(){
  const q=recert.questions[recertIndex];
- $('#app').innerHTML='<h1>Переаттестация по основному меню</h1><p>'+(recert.mode==='practice'?'Для себя':'Для руководства')+' · '+esc(q.section)+' · Вопрос '+(recertIndex+1)+' из 40</p><progress max="40" value="'+(recertIndex+1)+'"></progress><form id="recert-form" class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'answer',recert.answers[recertIndex])+'<div class="actions">'+(recertIndex?'<button type="button" id="recert-back" class="secondary">← Назад</button>':'')+'<button type="submit">'+(recertIndex===39?'Завершить тест':'Сохранить и дальше →')+'</button></div><p role="status" id="recert-status">Ответы сохраняются при переходе между вопросами.</p></form>';
+ $('#app').innerHTML='<h1>Переаттестация по основному меню</h1><p>'+(recert.mode==='practice'?'Для себя':'Для руководства')+' · '+esc(q.section)+' · Вопрос '+(recertIndex+1)+' из '+recert.questions.length+'</p><progress max="'+recert.questions.length+'" value="'+(recertIndex+1)+'"></progress><form id="recert-form" class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'answer',recert.answers[recertIndex])+'<div class="actions">'+(recertIndex?'<button type="button" id="recert-back" class="secondary">← Назад</button>':'')+'<button type="submit">'+(recertIndex===recert.questions.length-1?'Завершить тест':'Сохранить и дальше →')+'</button></div><p role="status" id="recert-status">Ответы сохраняются при переходе между вопросами.</p></form>';
  async function save(direction){
   if(recertBusy)return;recertBusy=true;
   const form=$('#recert-form'),answer=String(new FormData(form).get('answer')||'');
@@ -9,7 +9,7 @@ function recertRender(){
   try{
    await api('recertification/'+recert.id+'/answer','POST',{index:recertIndex,answer});
    recert.answers[recertIndex]=answer;
-   if(direction===1&&recertIndex===39){
+   if(direction===1&&recertIndex===recert.questions.length-1){
     const result=await api('recertification/'+recert.id+'/submit','POST',{});
     $('#app').innerHTML='<h1>Результат переаттестации</h1><section class="card"><h2>'+result.score+'%</h2><p>'+(result.passed?'Сдано':'Не сдано')+' · Проходной балл '+result.pass_score+'%. '+(result.mode==='practice'?'Пробный результат виден только тебе.':'Результат доступен руководству.')+'</p>'+btn('К программе','nav','catalog','secondary')+'</section><details><summary>Разбор ответов</summary>'+result.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>';
    }else{recertIndex+=direction;recertRender()}
@@ -37,7 +37,7 @@ document.addEventListener('click',async e=>{
  b.disabled=true;
  try{
   const staff=(await api('team')).filter(s=>s.active&&s.role==='waiter');
-  $('#app').innerHTML='<h1>Назначить переаттестацию</h1>'+btn('Назад','nav','team','secondary')+'<p>40 вопросов из всех семи разделов. Сначала сотрудник проверяет себя, затем проходит официально. Повторы не ограничены.</p><form id="recert-assign-form" class="card"><label>Официант<select name="staff_id" required>'+staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' · '+esc(s.restaurant)+'</option>').join('')+'</select></label><button '+(!staff.length?'disabled':'')+'>Назначить</button><p id="recert-assigned-status" role="status"></p></form>';
+  $('#app').innerHTML='<h1>Назначить переаттестацию</h1>'+btn('Назад','nav','team','secondary')+'<p>30 вопросов из всех семи разделов. Сначала сотрудник проверяет себя, затем проходит официально. Повторы не ограничены.</p><form id="recert-assign-form" class="card"><label>Официант<select name="staff_id" required>'+staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' · '+esc(s.restaurant)+'</option>').join('')+'</select></label><button '+(!staff.length?'disabled':'')+'>Назначить</button><p id="recert-assigned-status" role="status"></p></form>';
   $('#recert-assign-form').onsubmit=async ev=>{
    ev.preventDefault();const form=ev.target,submit=form.querySelector('button');submit.disabled=true;
    try{await api('recertification/assign','POST',{staff_id:Number(new FormData(form).get('staff_id'))});$('#recert-assigned-status').textContent='Назначено. Сотрудник увидит обязательную переаттестацию на главной и в программе.'}catch(err){error(err)}finally{submit.disabled=false}

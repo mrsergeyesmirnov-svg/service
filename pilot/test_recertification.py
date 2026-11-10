@@ -15,11 +15,11 @@ class Selection(unittest.TestCase):
         dessert=chapter(200);dessert['section']='Десерты';cards.append(dessert)
         a=choose_questions(cards+cards,random.Random(1))
         b=choose_questions(cards,random.Random(2))
-        self.assertEqual(len(a),40)
-        self.assertEqual(len({q['dish_id'] for q in a}),40)
+        self.assertEqual(len(a),30)
+        self.assertEqual(len({q['dish_id'] for q in a}),30)
         self.assertEqual({q['section'] for q in a},set(SECTIONS))
         self.assertNotEqual(a,b)
-        self.assertTrue(all(5<=sum(q['section']==s for q in a)<=6 for s in SECTIONS))
+        self.assertTrue(all(4<=sum(q['section']==s for q in a)<=5 for s in SECTIONS))
     def test_insufficient_and_missing_sections_block(self):
         with self.assertRaises(HTTPException):choose_questions([chapter(i) for i in range(50)])
     def test_only_waiter(self):
@@ -49,7 +49,7 @@ class RecertificationIntegration(unittest.TestCase):
         waiter_headers = self.auth(102)
         response = self.client.post('/api/recertification/start', headers=waiter_headers)
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(len(response.json()['questions']), 40)
+        self.assertEqual(len(response.json()['questions']), 30)
         self.assertEqual({q['section'] for q in response.json()['questions']}, set(SECTIONS))
 
     def test_recertification_access_freezing_resume_and_submit(self):
@@ -63,15 +63,15 @@ class RecertificationIntegration(unittest.TestCase):
         self.assertEqual(self.client.post(base+'/start',headers=trainee).status_code,403)
         self.assertEqual(self.client.post(base+'/start',headers=wait,json={'mode':'official'}).status_code,409)
         r=self.client.post(base+'/start',headers=wait);self.assertEqual(r.status_code,200,r.text)
-        data=r.json();aid=data['id'];self.assertEqual(len(data['questions']),40)
+        data=r.json();aid=data['id'];self.assertEqual(len(data['questions']),30)
         self.assertFalse(any('ingredients' in q or 'correct' in q for q in data['questions']))
         self.assertEqual(self.client.post(base+'/start',headers=wait).json()['id'],aid)
         self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).status_code,422)
-        for i in range(40):
+        for i in range(30):
             r=self.client.post(base+'/'+aid+'/answer',headers=wait,json={'index':i,'answer':'Рис, Нори'})
             self.assertEqual(r.status_code,200,r.text)
         resumed=self.client.post(base+'/start',headers=wait).json()
-        self.assertEqual(resumed['answers'],['Рис, Нори']*40)
+        self.assertEqual(resumed['answers'],['Рис, Нори']*30)
         r=self.client.post(base+'/'+aid+'/submit',headers=wait);self.assertEqual(r.status_code,200,r.text)
         self.assertTrue(r.json()['passed']);self.assertEqual(r.json()['score'],100)
         self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).json(),r.json())
@@ -80,7 +80,7 @@ class RecertificationIntegration(unittest.TestCase):
         official=self.client.post(base+'/start',headers=wait,json={'mode':'official'}).json()
         self.assertEqual(official['mode'],'official')
         oid=official['id']
-        for i in range(40):
+        for i in range(30):
             self.assertEqual(self.client.post(base+'/'+oid+'/answer',headers=wait,json={'index':i,'answer':'Рис, Нори'}).status_code,200)
         self.assertEqual(self.client.post(base+'/'+oid+'/submit',headers=wait).status_code,200)
         self.assertEqual(len(self.client.get(base+'/results',headers=manager).json()),1)

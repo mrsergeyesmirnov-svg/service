@@ -1,4 +1,4 @@
-"""Waiter-only, frozen 40-question main-menu recertification."""
+"""Waiter-only, frozen 30-question main-menu recertification."""
 import random
 import uuid
 from fastapi import APIRouter, HTTPException, Request
@@ -7,7 +7,7 @@ from menu_assessments import menu_exam_questions
 from questions import public_question, grade_questions, check, normalize
 
 SECTIONS = ('Роллы', 'Азия', 'Салаты', 'Закуски', 'Супы', 'Горячее', 'Гриль')
-COUNT = 40
+COUNT = 30
 PASS_SCORE = 80
 
 
@@ -29,7 +29,7 @@ def choose_questions(cards, rng=None):
             groups[section].append(card)
             seen.add(card['dish_id'])
     if any(not items for items in groups.values()) or len(seen) < COUNT:
-        raise HTTPException(409, 'Нужны минимум 40 утверждённых блюд и все 7 разделов основного меню')
+        raise HTTPException(409, 'Нужны минимум 30 утверждённых блюд и все 7 разделов основного меню')
     for items in groups.values():
         rng.shuffle(items)
     selected = []
@@ -159,7 +159,7 @@ def make_router(db, require, manager, scope, audit):
     async def answer(aid: uuid.UUID, request: Request):
         d = await request.json()
         if (not isinstance(d, dict) or type(d.get('index')) is not int
-                or not 0 <= d['index'] < COUNT or not isinstance(d.get('answer'), str)
+                or not 0 <= d['index'] < 40 or not isinstance(d.get('answer'), str)
                 or len(d['answer']) > 3000):
             raise HTTPException(422, 'Некорректный ответ')
         with db() as c:
@@ -168,6 +168,8 @@ def make_router(db, require, manager, scope, audit):
             row = own(c, u, aid)
             if row['submitted_at']:
                 raise HTTPException(409, 'Тест уже завершён')
+            if d['index'] >= len(row['questions']):
+                raise HTTPException(422, 'Некорректный номер вопроса')
             answers = row['answers']
             answers[d['index']] = d['answer']
             c.execute('UPDATE recertification_attempts SET answers=%s WHERE id=%s',
@@ -182,7 +184,7 @@ def make_router(db, require, manager, scope, audit):
             row = own(c, u, aid)
             if not row['submitted_at']:
                 if any(not isinstance(a, str) or not a.strip() for a in row['answers']):
-                    raise HTTPException(422, 'Ответь на все 40 вопросов')
+                    raise HTTPException(422, f"Ответь на все {len(row['questions'])} вопросов")
                 score = grade_questions(row['questions'], row['answers'])
                 row = c.execute('''UPDATE recertification_attempts
                     SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',

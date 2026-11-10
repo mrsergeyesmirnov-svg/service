@@ -350,3 +350,9 @@ CREATE TABLE IF NOT EXISTS recertification_assignments (
  assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  completed_at TIMESTAMPTZ
 );
+
+-- Accept new 30-question attempts while preserving existing 40-question history.
+ALTER TABLE recertification_attempts DROP CONSTRAINT IF EXISTS recertification_attempts_questions_check;
+ALTER TABLE recertification_attempts DROP CONSTRAINT IF EXISTS recertification_attempts_answers_check;
+ALTER TABLE recertification_attempts ADD CONSTRAINT recertification_attempts_questions_check CHECK(jsonb_array_length(questions) IN (30,40));
+ALTER TABLE recertification_attempts ADD CONSTRAINT recertification_attempts_answers_check CHECK(jsonb_array_length(answers)=jsonb_array_length(questions));
