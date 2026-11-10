@@ -39,6 +39,7 @@ jobs:
       - name: Check JavaScript and shell deployment syntax
         working-directory: .
         run: |
+          node tgcloud/test_invite_handler.cjs
           node --check pilot/pilot.js
           node --check pilot/dishes.js
           node --check pilot/learning.js
@@ -61,6 +62,20 @@ jobs:
           bash -n pilot/update-bot-only.sh
           bash -n pilot/configure-domain.sh
           bash -n pilot/telegram-network-check.sh
+      - name: Probe production Academy reachability (diagnostic only)
+        if: always()
+        continue-on-error: true
+        working-directory: .
+        run: |
+          for path in /pilot/ /pilot/pilot.js /api/health; do
+            echo "Checking $path"
+            curl -sS -L --connect-timeout 5 --max-time 15 -o /dev/null \
+              -w 'HTTP=%{http_code} IP=%{remote_ip} DNS=%{time_namelookup}s TLS=%{time_appconnect}s TOTAL=%{time_total}s\\n' \
+              "https://service.139.100.239.232.sslip.io$path" || true
+          done
+          echo "Frame-related response headers:"
+          curl -sSI --connect-timeout 5 --max-time 15 https://service.139.100.239.232.sslip.io/pilot/ |
+            grep -Ei '^(HTTP/|x-frame-options:|content-security-policy:|cross-origin|location:|server:)' || true
       - name: Unit and isolated PostgreSQL integration tests
         run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_ingredient_recognition test_onboarding test_recertification
 
