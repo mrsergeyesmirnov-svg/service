@@ -1,7 +1,7 @@
 let recert=null,recertIndex=0,recertBusy=false;
 function recertRender(){
  const q=recert.questions[recertIndex];
- $('#app').innerHTML='<h1>Переаттестация по основному меню</h1><p>'+esc(q.section)+' · Вопрос '+(recertIndex+1)+' из 40</p><progress max="40" value="'+(recertIndex+1)+'"></progress><form id="recert-form" class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'answer',recert.answers[recertIndex])+'<div class="actions">'+(recertIndex?'<button type="button" id="recert-back" class="secondary">← Назад</button>':'')+'<button type="submit">'+(recertIndex===39?'Завершить тест':'Сохранить и дальше →')+'</button></div><p role="status" id="recert-status">Ответы сохраняются при переходе между вопросами.</p></form>';
+ $('#app').innerHTML='<h1>Переаттестация по основному меню</h1><p>'+(recert.mode==='practice'?'Для себя':'Для руководства')+' · '+esc(q.section)+' · Вопрос '+(recertIndex+1)+' из 40</p><progress max="40" value="'+(recertIndex+1)+'"></progress><form id="recert-form" class="card"><h2>'+esc(q.question)+'</h2>'+questionInput(q,'answer',recert.answers[recertIndex])+'<div class="actions">'+(recertIndex?'<button type="button" id="recert-back" class="secondary">← Назад</button>':'')+'<button type="submit">'+(recertIndex===39?'Завершить тест':'Сохранить и дальше →')+'</button></div><p role="status" id="recert-status">Ответы сохраняются при переходе между вопросами.</p></form>';
  async function save(direction){
   if(recertBusy)return;recertBusy=true;
   const form=$('#recert-form'),answer=String(new FormData(form).get('answer')||'');
@@ -11,7 +11,7 @@ function recertRender(){
    recert.answers[recertIndex]=answer;
    if(direction===1&&recertIndex===39){
     const result=await api('recertification/'+recert.id+'/submit','POST',{});
-    $('#app').innerHTML='<h1>Результат переаттестации</h1><section class="card"><h2>'+result.score+'%</h2><p>'+(result.passed?'Сдано':'Не сдано')+' · Проходной балл '+result.pass_score+'%. Результат сохранён.</p>'+btn('К программе','nav','catalog','secondary')+'</section><details><summary>Разбор ответов</summary>'+result.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>';
+    $('#app').innerHTML='<h1>Результат переаттестации</h1><section class="card"><h2>'+result.score+'%</h2><p>'+(result.passed?'Сдано':'Не сдано')+' · Проходной балл '+result.pass_score+'%. '+(result.mode==='practice'?'Пробный результат виден только тебе.':'Результат доступен руководству.')+'</p>'+btn('К программе','nav','catalog','secondary')+'</section><details><summary>Разбор ответов</summary>'+result.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>';
    }else{recertIndex+=direction;recertRender()}
   }catch(e){error(e);form.querySelectorAll('button').forEach(b=>b.disabled=false)}
   finally{recertBusy=false}
@@ -24,7 +24,7 @@ document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-action]');if(!b)return;
  if(b.dataset.action==='recert-start'){
   b.disabled=true;
-  try{recert=await api('recertification/start','POST',{});recertIndex=Math.max(0,recert.answers.findIndex(a=>!a));recertRender()}catch(err){error(err)}finally{b.disabled=false}
+  try{recert=await api('recertification/start','POST',{mode:b.dataset.id||'practice'});recertIndex=Math.max(0,recert.answers.findIndex(a=>!a));recertRender()}catch(err){error(err)}finally{b.disabled=false}
  }
  if(b.dataset.action==='recert-results'){
   b.disabled=true;

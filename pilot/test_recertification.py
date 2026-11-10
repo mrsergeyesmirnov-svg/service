@@ -47,6 +47,7 @@ class RecertificationIntegration(unittest.TestCase):
         trainee=self.auth(101);wait=self.auth(102);manager=self.auth(999)
         base='/api/recertification'
         self.assertEqual(self.client.post(base+'/start',headers=trainee).status_code,403)
+        self.assertEqual(self.client.post(base+'/start',headers=wait,json={'mode':'official'}).status_code,409)
         r=self.client.post(base+'/start',headers=wait);self.assertEqual(r.status_code,200,r.text)
         data=r.json();aid=data['id'];self.assertEqual(len(data['questions']),40)
         self.assertFalse(any('ingredients' in q or 'correct' in q for q in data['questions']))
@@ -61,7 +62,16 @@ class RecertificationIntegration(unittest.TestCase):
         self.assertTrue(r.json()['passed']);self.assertEqual(r.json()['score'],100)
         self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).json(),r.json())
         self.assertEqual(self.client.get(base+'/results',headers=trainee).status_code,403)
+        self.assertEqual(len(self.client.get(base+'/results',headers=manager).json()),0)
+        official=self.client.post(base+'/start',headers=wait,json={'mode':'official'}).json()
+        self.assertEqual(official['mode'],'official')
+        oid=official['id']
+        for i in range(40):
+            self.assertEqual(self.client.post(base+'/'+oid+'/answer',headers=wait,json={'index':i,'answer':'Рис, Нори'}).status_code,200)
+        self.assertEqual(self.client.post(base+'/'+oid+'/submit',headers=wait).status_code,200)
         self.assertEqual(len(self.client.get(base+'/results',headers=manager).json()),1)
+        self.assertNotEqual(self.client.post(base+'/start',headers=wait,json={'mode':'official'}).json()['id'],oid)
+        self.assertNotEqual(self.client.post(base+'/start',headers=wait).json()['id'],aid)
         with self.connect() as c:c.execute("UPDATE staff SET role='trainee' WHERE id=102")
         self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).status_code,403)
 

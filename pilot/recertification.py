@@ -65,7 +65,7 @@ def make_router(db, require, manager, scope, audit):
         return dict(id=str(row['id']), pass_score=row['pass_score'],
                     questions=[dict(public_question(q), section=q['section']) for q in row['questions']],
                     answers=row['answers'], score=row['score'], passed=row['passed'],
-                    submitted=row['submitted_at'] is not None)
+                    submitted=row['submitted_at'] is not None, mode=row['mode'])
 
     def own(c, user, aid):
         row = c.execute('''SELECT * FROM recertification_attempts
@@ -82,25 +82,34 @@ def make_router(db, require, manager, scope, audit):
             manager(u)
             return c.execute('''SELECT a.id,s.name,a.restaurant,a.created_at,a.submitted_at,
                 a.score,a.passed FROM recertification_attempts a JOIN staff s ON s.id=a.staff_id
-                WHERE (%s OR a.restaurant=%s) ORDER BY a.created_at DESC LIMIT 200''',
+                WHERE a.mode='official' AND a.submitted_at IS NOT NULL AND (%s OR a.restaurant=%s) ORDER BY a.created_at DESC LIMIT 200''',
                 (u['role'] == 'manager', u['restaurant'])).fetchall()
 
     @router.post('/start')
-    def start(request: Request):
+    async def start(request: Request):
+        raw = await request.body()
+        d = await request.json() if raw else {}
+        if not isinstance(d, dict) or d.get('mode', 'practice') not in ('practice', 'official'):
+            raise HTTPException(422, 'Выбери режим прохождения')
+        mode = d.get('mode', 'practice')
         with db() as c:
             u = require(c, request)
             waiter(u)
             c.execute('SELECT id FROM staff WHERE id=%s FOR UPDATE', (u['id'],))
+            if mode == 'official' and not c.execute(
+                "SELECT 1 FROM recertification_attempts WHERE staff_id=%s AND restaurant=%s AND mode='practice' AND submitted_at IS NOT NULL",
+                (u['id'], u['restaurant'])).fetchone():
+                raise HTTPException(409, 'Сначала заверши пробное прохождение для себя')
             row = c.execute('''SELECT * FROM recertification_attempts
-                WHERE staff_id=%s AND restaurant=%s AND submitted_at IS NULL''',
-                (u['id'], u['restaurant'])).fetchone()
+                WHERE staff_id=%s AND restaurant=%s AND mode=%s AND submitted_at IS NULL''',
+                (u['id'], u['restaurant'], mode)).fetchone()
             if not row:
                 questions = choose_questions(bank(c, u))
                 row = c.execute('''INSERT INTO recertification_attempts
-                    (id,staff_id,restaurant,questions,answers,pass_score)
-                    VALUES(%s,%s,%s,%s,%s,%s) RETURNING *''',
+                    (id,staff_id,restaurant,questions,answers,pass_score,mode)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
                     (uuid.uuid4(), u['id'], u['restaurant'], Jsonb(questions),
-                     Jsonb([None] * COUNT), PASS_SCORE)).fetchone()
+                     Jsonb([None] * COUNT), PASS_SCORE, mode)).fetchone()
                 audit(c, u['id'], 'recertification:start', row['id'])
             return public(row)
 

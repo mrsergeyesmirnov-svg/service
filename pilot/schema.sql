@@ -335,5 +335,10 @@ CREATE TABLE IF NOT EXISTS recertification_attempts (
  submitted_at TIMESTAMPTZ,
  CHECK(jsonb_array_length(questions)=40), CHECK(jsonb_array_length(answers)=40)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS recertification_one_active
- ON recertification_attempts(staff_id,restaurant) WHERE submitted_at IS NULL;
+
+
+ALTER TABLE recertification_attempts ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'practice'
+ CHECK (mode IN ('practice','official'));
+DROP INDEX IF EXISTS recertification_one_active;
+CREATE UNIQUE INDEX IF NOT EXISTS recertification_active_mode
+ ON recertification_attempts(staff_id,restaurant,mode) WHERE submitted_at IS NULL;
