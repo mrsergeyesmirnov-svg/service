@@ -3,7 +3,6 @@ import random
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
-from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
 from menu_assessments import menu_exam_questions
 from questions import public_question, grade_questions, check, normalize
 
@@ -50,16 +49,27 @@ def make_router(db, require, manager, scope, audit):
     router = APIRouter(prefix='/api/recertification')
 
     def bank(c, user):
-        cards = []
-        for course in c.execute('''SELECT id,reviewed_dish_signature FROM courses
+        """Published restaurant recipes form the recertification bank.
+
+        A course's reviewed signature gates its own course exam, not this
+        restaurant-wide waiter recertification. Keep unpublished, archived
+        and incomplete recipes out of the question bank.
+        """
+        from quiz_cards import _ingredients
+
+        rows = c.execute("""SELECT id,title,section,ingredients,source_name,source_page
+            FROM dish_cards
             WHERE restaurant=%s AND published AND NOT archived
-            AND reviewed_dish_signature IS NOT NULL ORDER BY id DESC''',
-            (user['restaurant'],)).fetchall():
-            chapters = dish_chapters(c, course['id'], user['restaurant']) or []
-            if (len(chapters) == len(map_details(c, course['id'])) and chapters
-                    and reviewed_dish_signature(chapters) == course['reviewed_dish_signature']):
-                cards.extend(chapters)
-        return cards
+            ORDER BY id""", (user['restaurant'],)).fetchall()
+        return [
+            dict(kind='dish', dish_id=row['id'], title=row['title'],
+                 section=row['section'], ingredients=row['ingredients'],
+                 source=row['source_name'] or 'Карточка блюда',
+                 source_page=row['source_page'])
+            for row in rows
+            if isinstance(row['ingredients'], list)
+            and len(_ingredients({'ingredients': row['ingredients']})) >= 2
+        ]
 
     def public(row):
         return dict(id=str(row['id']), pass_score=row['pass_score'],

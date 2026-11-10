@@ -43,6 +43,15 @@ class RecertificationIntegration(unittest.TestCase):
             c.execute('UPDATE courses SET reviewed_dish_signature=%s WHERE id=%s',
                       (reviewed_dish_signature(dish_chapters(c,self.cid,'MOJO')),self.cid))
 
+    def test_published_cards_do_not_require_course_review_signature(self):
+        with self.connect() as c:
+            c.execute('UPDATE courses SET reviewed_dish_signature=NULL WHERE id=%s', (self.cid,))
+        waiter_headers = self.auth(102)
+        response = self.client.post('/api/recertification/start', headers=waiter_headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(response.json()['questions']), 40)
+        self.assertEqual({q['section'] for q in response.json()['questions']}, set(SECTIONS))
+
     def test_recertification_access_freezing_resume_and_submit(self):
         trainee=self.auth(101);wait=self.auth(102);manager=self.auth(999)
         base='/api/recertification'
