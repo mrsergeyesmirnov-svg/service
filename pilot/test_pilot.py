@@ -902,6 +902,33 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post(url+'/publish',json={'reviewed':True},headers=m).status_code,409)
         self.assertEqual(len(self.client.get(url+'/results',headers=m).json()),5)
 
+    def test_serverless_invite_redeemed_with_signed_telegram_login(self):
+        manager=self.auth(999)
+        response=self.client.post('/api/invites',json={'role':'waiter'},headers=manager)
+        self.assertEqual(response.status_code,200,response.text)
+        token=response.json()['url'].split('=')[1]
+        # Invalid Telegram signature must not consume a valid invitation.
+        forged=self.client.post('/api/login',json={'initData':signed(401).replace('401','402'),'invite':token})
+        self.assertEqual(forged.status_code,401)
+        with server.db() as c:
+            self.assertIsNone(c.execute('SELECT used_by FROM invites WHERE token=%s',(token,)).fetchone()['used_by'])
+        requested=self.client.post('/api/login',json={'initData':signed(401),'invite':token})
+        self.assertEqual(requested.status_code,403,requested.text)
+        self.assertIn('ожидает',requested.json()['detail'])
+        with server.db() as c:
+            row=c.execute('SELECT role,restaurant,active,bot_started FROM staff WHERE id=401').fetchone()
+            self.assertEqual(row['role'],'waiter')
+            self.assertEqual(row['restaurant'],'MOJO')
+            self.assertFalse(row['active'])
+            self.assertTrue(row['bot_started'])
+            self.assertEqual(c.execute('SELECT used_by FROM invites WHERE token=%s',(token,)).fetchone()['used_by'],401)
+        reused=self.client.post('/api/login',json={'initData':signed(402),'invite':token})
+        self.assertEqual(reused.status_code,403)
+        with server.db() as c:
+            self.assertIsNone(c.execute('SELECT id FROM staff WHERE id=402').fetchone())
+        self.assertEqual(self.client.post('/api/team/401/approve',headers=manager).status_code,200)
+        self.assertEqual(self.client.post('/api/login',json={'initData':signed(401)}).status_code,200)
+
     def test_forwarded_invite_needs_explicit_manager_approval(self):
         manager=self.auth(999)
         outside=self.auth(103)
