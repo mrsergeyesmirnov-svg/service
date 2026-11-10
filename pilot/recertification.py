@@ -20,6 +20,8 @@ def choose_questions(cards, rng=None):
     rng = rng or random.SystemRandom()
     groups = {s: [] for s in SECTIONS}
     names = {normalize(s): s for s in SECTIONS}
+    # The published menu uses 'Роллы и суши'; the exam labels it 'Роллы'.
+    names[normalize('Роллы и суши')] = 'Роллы'
     seen = set()
     for card in cards:
         section = names.get(normalize(card['section']))
