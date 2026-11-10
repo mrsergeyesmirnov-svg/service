@@ -39,6 +39,7 @@ jobs:
       - name: Check JavaScript and shell deployment syntax
         working-directory: .
         run: |
+          node tgcloud/test_invite_handler.cjs
           node --check pilot/pilot.js
           node --check pilot/dishes.js
           node --check pilot/learning.js
