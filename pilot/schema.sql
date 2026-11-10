@@ -324,3 +324,16 @@ CREATE INDEX IF NOT EXISTS onboarding_diagnostics_recent
 ALTER TABLE onboarding_feedback ALTER COLUMN rating DROP NOT NULL;
 ALTER TABLE onboarding_feedback ALTER COLUMN clarity DROP NOT NULL;
 ALTER TABLE onboarding_feedback ADD COLUMN IF NOT EXISTS reflection JSONB;
+
+
+-- Separate from trainee learning progress and required section exams.
+CREATE TABLE IF NOT EXISTS recertification_attempts (
+ id UUID PRIMARY KEY, staff_id BIGINT NOT NULL REFERENCES staff(id),
+ restaurant TEXT NOT NULL, questions JSONB NOT NULL, answers JSONB NOT NULL,
+ pass_score INTEGER NOT NULL CHECK(pass_score BETWEEN 1 AND 100),
+ score INTEGER, passed BOOLEAN, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ submitted_at TIMESTAMPTZ,
+ CHECK(jsonb_array_length(questions)=40), CHECK(jsonb_array_length(answers)=40)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS recertification_one_active
+ ON recertification_attempts(staff_id,restaurant) WHERE submitted_at IS NULL;

@@ -18,6 +18,7 @@ from wine_cards import make_router as make_wine_cards_router
 from menu_cards import make_router as make_menu_cards_router
 from menu_assessments import make_router as make_menu_assessments_router
 from menu_assessments import menu_exam_questions
+from recertification import make_router as make_recertification_router
 from onboarding import make_onboarding_router
 from questions import clean_question, public_question, grade_questions
 from question_quality import quality_issues
@@ -112,6 +113,7 @@ app.include_router(make_menu_assessments_router(lambda: db(), require, manager, 
 app.include_router(attach_dishes(lambda: db(), require, manager, scope, audit))
 app.include_router(make_voice_router(lambda: db(), require))
 app.include_router(make_events_router(lambda: db(), require, manager, scope, audit))
+app.include_router(make_recertification_router(lambda: db(), require, manager, scope, audit))
 app.include_router(make_onboarding_router(lambda: db(), require, manager, scope, grade, audit))
 
 def telegram_poll_fresh(last_ok, now=None):
@@ -498,8 +500,12 @@ def dishes_script():return FileResponse(BASE/'dishes.js',media_type='application
 @app.get('/pilot/dishes.css')
 def dishes_styles():return FileResponse(BASE/'dishes.css',media_type='text/css')
 
+@app.get('/pilot/recertification.js')
+def recertification_script():return FileResponse(BASE/'recertification.js',media_type='application/javascript')
+
 if __name__=='__main__':
     with db() as c:c.execute((BASE/'schema.sql').read_text())
     import uvicorn
     uvicorn.run(app,host='0.0.0.0',port=8000,access_log=False)
+
 

@@ -45,6 +45,7 @@ jobs:
           node --check pilot/wine_cards.js
           node --check pilot/menu_cards.js
           node --check pilot/menu_assessments.js
+          node --check pilot/recertification.js
           node --check pilot/events.js
           node --check pilot/onboarding.js
           (cd pilot && node test_admin_nav.cjs)
@@ -61,4 +62,5 @@ jobs:
           bash -n pilot/configure-domain.sh
           bash -n pilot/telegram-network-check.sh
       - name: Unit and isolated PostgreSQL integration tests
-        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_ingredient_recognition test_onboarding
+        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_ingredient_recognition test_onboarding test_recertification
+

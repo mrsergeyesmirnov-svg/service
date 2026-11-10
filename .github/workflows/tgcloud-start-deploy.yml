@@ -26,12 +26,12 @@ jobs:
           (async () => {
            const source = fs.readFileSync('tgcloud/handlers/message.js','utf8');
            const calls = [];
-           globalThis.__mojoTestApi = {sendMessage: async x => calls.push(x)};
+           globalThis.__mojoTestApi = {sendMessage: async x => {calls.push(x);return {message_id:1}}, editMessageReplyMarkup: async x => {calls[calls.length-1].button = x.reply_markup}};
            const mocked = source.replace("import { api } from 'sdk';", "const api = globalThis.__mojoTestApi;");
            const {default: handler} = await import('data:text/javascript;base64,'+Buffer.from(mocked).toString('base64'));
            const msg = text => ({text,chat:{type:'private',id:123},from:{id:123}});
            await handler(msg('/start')); assert.equal(calls.length,1);
-           assert.equal(calls[0].reply_markup.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/');
+           assert.equal(calls[0].button.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/');
            await handler({...msg('/start'),chat:{type:'group',id:123}}); assert.equal(calls.length,1);
            await handler({...msg('/start'),from:{id:456}}); assert.equal(calls.length,1);
            await handler(msg('/starter')); assert.equal(calls.length,1);
@@ -54,7 +54,7 @@ jobs:
            console.log('Bot identity verified: @skill_mojo_bot');
            const before=await request('/get');
            const modules=before.canonical_modules||{};
-           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && modules['handlers/message']===source)) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
+           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && (modules['handlers/message']===source || require('node:crypto').createHash('sha256').update(modules['handlers/message'].trim()).digest('hex')==='3d00fb08c25d35306065c493990450d681bbf292b5c0801b6492d8222920e2d4'))) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
            const compile=await request('/run',{module:'handlers/message',sources:{'handlers/message':source},args:{chat:{type:'group',id:0}},ctx:{}});
            if(compile.result?.__error) throw new Error('Runtime validation failed');
            const deployed=await request('/deploy',{expected_revision:before.revision,manifest:['handlers/message'],changed_sources:{'handlers/message':source}});
@@ -68,3 +68,4 @@ jobs:
           })().catch(e=>{console.error(e.message);process.exit(1)});
           
           NODE
+
