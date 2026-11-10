@@ -46,6 +46,11 @@ class RecertificationIntegration(unittest.TestCase):
     def test_recertification_access_freezing_resume_and_submit(self):
         trainee=self.auth(101);wait=self.auth(102);manager=self.auth(999)
         base='/api/recertification'
+        self.assertEqual(self.client.post(base+'/assign',headers=trainee,json={'staff_id':102}).status_code,403)
+        self.assertEqual(self.client.post(base+'/assign',headers=self.auth(103),json={'staff_id':102}).status_code,403)
+        self.assertEqual(self.client.post(base+'/assign',headers=manager,json={'staff_id':101}).status_code,422)
+        self.assertEqual(self.client.post(base+'/assign',headers=manager,json={'staff_id':102}).status_code,200)
+        self.assertIsNone(self.client.get(base+'/assignment',headers=wait).json()['completed_at'])
         self.assertEqual(self.client.post(base+'/start',headers=trainee).status_code,403)
         self.assertEqual(self.client.post(base+'/start',headers=wait,json={'mode':'official'}).status_code,409)
         r=self.client.post(base+'/start',headers=wait);self.assertEqual(r.status_code,200,r.text)
@@ -70,6 +75,7 @@ class RecertificationIntegration(unittest.TestCase):
             self.assertEqual(self.client.post(base+'/'+oid+'/answer',headers=wait,json={'index':i,'answer':'Рис, Нори'}).status_code,200)
         self.assertEqual(self.client.post(base+'/'+oid+'/submit',headers=wait).status_code,200)
         self.assertEqual(len(self.client.get(base+'/results',headers=manager).json()),1)
+        self.assertIsNotNone(self.client.get(base+'/assignment',headers=wait).json()['completed_at'])
         self.assertNotEqual(self.client.post(base+'/start',headers=wait,json={'mode':'official'}).json()['id'],oid)
         self.assertNotEqual(self.client.post(base+'/start',headers=wait).json()['id'],aid)
         with self.connect() as c:c.execute("UPDATE staff SET role='trainee' WHERE id=102")

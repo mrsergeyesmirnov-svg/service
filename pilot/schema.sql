@@ -342,3 +342,11 @@ ALTER TABLE recertification_attempts ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL
 DROP INDEX IF EXISTS recertification_one_active;
 CREATE UNIQUE INDEX IF NOT EXISTS recertification_active_mode
  ON recertification_attempts(staff_id,restaurant,mode) WHERE submitted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS recertification_assignments (
+ staff_id BIGINT PRIMARY KEY REFERENCES staff(id),
+ restaurant TEXT NOT NULL,
+ assigned_by BIGINT NOT NULL REFERENCES staff(id),
+ assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ completed_at TIMESTAMPTZ
+);

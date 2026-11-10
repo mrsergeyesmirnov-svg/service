@@ -75,6 +75,36 @@ def make_router(db, require, manager, scope, audit):
             raise HTTPException(404, 'Попытка не найдена')
         return row
 
+    @router.post('/assign')
+    async def assign(request: Request):
+        d = await request.json()
+        if not isinstance(d, dict) or type(d.get('staff_id')) is not int:
+            raise HTTPException(422, 'Выбери сотрудника')
+        with db() as c:
+            u = require(c, request)
+            manager(u)
+            target = c.execute('SELECT * FROM staff WHERE id=%s FOR UPDATE', (d['staff_id'],)).fetchone()
+            if not target: raise HTTPException(404, 'Сотрудник не найден')
+            scope(u, target['restaurant'])
+            if not target['active'] or target['role'] != 'waiter':
+                raise HTTPException(422, 'Назначение доступно только активным официантам')
+            choose_questions(bank(c, target))
+            row = c.execute('''INSERT INTO recertification_assignments(staff_id,restaurant,assigned_by)
+                VALUES(%s,%s,%s) ON CONFLICT(staff_id) DO UPDATE
+                SET assigned_by=excluded.assigned_by,restaurant=excluded.restaurant,assigned_at=now(),completed_at=NULL
+                WHERE recertification_assignments.completed_at IS NOT NULL RETURNING staff_id''',
+                (target['id'], target['restaurant'], u['id'])).fetchone()
+            audit(c, u['id'], 'recertification:assigned', target['id'])
+            return {'assigned': True}
+
+    @router.get('/assignment')
+    def assignment(request: Request):
+        with db() as c:
+            u = require(c, request)
+            waiter(u)
+            return c.execute('SELECT assigned_at,completed_at FROM recertification_assignments WHERE staff_id=%s AND restaurant=%s',
+                (u['id'], u['restaurant'])).fetchone()
+
     @router.get('/results')
     def results(request: Request):
         with db() as c:
@@ -145,6 +175,9 @@ def make_router(db, require, manager, scope, audit):
                 row = c.execute('''UPDATE recertification_attempts
                     SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
                     (score, score >= row['pass_score'], aid)).fetchone()
+                if row['mode'] == 'official' and row['passed']:
+                    c.execute('UPDATE recertification_assignments SET completed_at=now() WHERE staff_id=%s AND restaurant=%s AND completed_at IS NULL',
+                              (u['id'], u['restaurant']))
                 audit(c, u['id'], 'recertification:submit', aid)
             return dict(public(row), review=[dict(q, answer=a, assessment=check(q, a))
                 for q, a in zip(row['questions'], row['answers'])])

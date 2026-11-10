@@ -31,3 +31,16 @@ document.addEventListener('click',async e=>{
   try{const rows=await api('recertification/results');$('#app').innerHTML='<h1>Переаттестация официантов</h1>'+btn('Назад','nav','team','secondary')+(rows.map(r=>'<section class="card"><h2>'+esc(r.name)+'</h2><p>'+esc(r.restaurant)+' · '+esc(new Date(r.created_at).toLocaleString('ru-RU'))+'</p><p>'+(r.submitted_at?r.score+'% · '+(r.passed?'Сдано':'Не сдано'):'В процессе')+'</p></section>').join('')||'<p>Попыток пока нет.</p>')}catch(err){error(err)}finally{b.disabled=false}
  }
 });
+
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('[data-action="recert-assign-open"]');if(!b)return;
+ b.disabled=true;
+ try{
+  const staff=(await api('team')).filter(s=>s.active&&s.role==='waiter');
+  $('#app').innerHTML='<h1>Назначить переаттестацию</h1>'+btn('Назад','nav','team','secondary')+'<p>40 вопросов из всех семи разделов. Сначала сотрудник проверяет себя, затем проходит официально. Повторы не ограничены.</p><form id="recert-assign-form" class="card"><label>Официант<select name="staff_id" required>'+staff.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' · '+esc(s.restaurant)+'</option>').join('')+'</select></label><button '+(!staff.length?'disabled':'')+'>Назначить</button><p id="recert-assigned-status" role="status"></p></form>';
+  $('#recert-assign-form').onsubmit=async ev=>{
+   ev.preventDefault();const form=ev.target,submit=form.querySelector('button');submit.disabled=true;
+   try{await api('recertification/assign','POST',{staff_id:Number(new FormData(form).get('staff_id'))});$('#recert-assigned-status').textContent='Назначено. Сотрудник увидит обязательную переаттестацию на главной и в программе.'}catch(err){error(err)}finally{submit.disabled=false}
+  };
+ }catch(err){error(err)}finally{b.disabled=false}
+});

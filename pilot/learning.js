@@ -1,4 +1,5 @@
-function recertEntry(){return user?.role==='waiter'?'<section class="card"><h2>Переаттестация официантов</h2><p>Основное меню: 40 вопросов с обязательным охватом каждого из 7 разделов на состав блюд. Проходной балл — 80%.</p>'+btn('1. Проверить себя','recert-start','practice','secondary')+btn('2. Пройти для руководства','recert-start','official','lime-action')+'<p>Сначала пробное прохождение. Оба режима можно повторять без ограничений. Руководство видит только завершённые официальные попытки.</p>'+'</section>':''}
+let recertAssigned=null;
+function recertEntry(){return user?.role==='waiter'?'<section class="card"><h2>Переаттестация официантов</h2>'+ (recertAssigned&&!recertAssigned.completed_at?'<p><strong>Назначено руководителем — обязательно пройти</strong></p>':'')+'<p>Основное меню: 40 вопросов с обязательным охватом каждого из 7 разделов на состав блюд. Проходной балл — 80%.</p>'+btn('1. Проверить себя','recert-start','practice','secondary')+btn('2. Пройти для руководства','recert-start','official','lime-action')+'<p>Сначала пробное прохождение. Оба режима можно повторять без ограничений. Руководство видит только завершённые официальные попытки.</p>'+'</section>':''}
 async function loadOptionalWine(cid){
  try{return await api('wine-cards/'+cid)}catch(err){error('Карточки вина временно недоступны. Можно продолжить изучение курса.');return {pairs:[],ratings:{}}}
 }
@@ -53,6 +54,7 @@ function courseCard(c){
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
  learningCourses=await api('learning');
+ if(user?.role==='waiter')recertAssigned=await api('recertification/assignment');
  if(user?.role==='trainee')learningCourses.sort((a,b)=>Number(b.category==='service')-Number(a.category==='service'));
  let induction=null;
  if(user?.role==='trainee'&&page!=='catalog'){
