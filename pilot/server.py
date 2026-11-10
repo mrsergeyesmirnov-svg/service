@@ -145,15 +145,37 @@ async def login(request:Request):
     d=await request.json()
     try: u=validate_init(d.get('initData',''),TOKEN)
     except (ValueError,KeyError,TypeError): raise HTTPException(401,'Войдите через Telegram')
+    # The Serverless /start handler passes the one-time token to this signed
+    # Telegram Web App login. Never trust an invite without validated initData.
+    invite_token=d.get('invite')
+    if invite_token is not None and (not isinstance(invite_token,str) or len(invite_token)!=32 or
+                                     any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in invite_token)):
+        raise HTTPException(422,'Некорректное приглашение')
+    pending_created=False
     with db() as c:
         member=c.execute('SELECT * FROM staff WHERE id=%s AND active',(u['id'],)).fetchone()
         if not member:
             pending=c.execute('SELECT id FROM staff WHERE id=%s AND NOT active',(u['id'],)).fetchone()
             if pending:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO')
-            raise HTTPException(403,'Сначала откройте приглашение руководителя и нажмите «Старт» в боте')
-        session=secrets.token_urlsafe(32)
-        c.execute('DELETE FROM sessions WHERE expires_at<now()')
-        c.execute("INSERT INTO sessions VALUES(%s,%s,now()+interval '8 hours')",(hashlib.sha256(session.encode()).hexdigest(),u['id']))
+            if not invite_token:
+                raise HTTPException(403,'Сначала откройте приглашение руководителя и нажмите «Старт» в боте')
+            invite=c.execute('''SELECT * FROM invites WHERE token=%s AND NOT revoked
+                         AND used_by IS NULL AND expires_at>now() FOR UPDATE''',(invite_token,)).fetchone()
+            if not invite:raise HTTPException(403,'Приглашение недействительно или уже использовано')
+            name=' '.join(str(u.get(k) or '') for k in ('first_name','last_name')).strip()[:200] or str(u['id'])
+            created=c.execute('''INSERT INTO staff(id,name,role,restaurant,bot_started,active)
+                         VALUES(%s,%s,%s,%s,true,false) ON CONFLICT(id) DO NOTHING RETURNING id''',
+                         (u['id'],name,invite['role'],invite['restaurant'])).fetchone()
+            if not created:raise HTTPException(409,'Учётная запись уже существует')
+            c.execute('UPDATE invites SET used_by=%s WHERE token=%s',(u['id'],invite_token))
+            audit(c,u['id'],'invite:accepted',invite['restaurant'])
+            pending_created=True
+        else:
+            session=secrets.token_urlsafe(32)
+            c.execute('DELETE FROM sessions WHERE expires_at<now()')
+            c.execute("INSERT INTO sessions VALUES(%s,%s,now()+interval '8 hours')",(hashlib.sha256(session.encode()).hexdigest(),u['id']))
+    # Raise only after the connection context has committed the new staff row.
+    if pending_created:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO')
     return {'token':session,'user':member}
 
 @app.get('/api/me')
