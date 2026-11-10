@@ -4,7 +4,8 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
 from menu_assessments import menu_exam_questions
-from questions import public_question, grade_questions, check, normalize
+from questions import public_question, check, normalize
+from recertification_ai import evaluate_attempt
 
 SECTIONS = ('Роллы', 'Азия', 'Салаты', 'Закуски', 'Супы', 'Горячее', 'Гриль')
 COUNT = 30
@@ -185,15 +186,17 @@ def make_router(db, require, manager, scope, audit):
             if not row['submitted_at']:
                 if any(not isinstance(a, str) or not a.strip() for a in row['answers']):
                     raise HTTPException(422, f"Ответь на все {len(row['questions'])} вопросов")
-                score = grade_questions([dict(q, lenient_recall=True) for q in row['questions']], row['answers'])
+                score, assessments = evaluate_attempt(row['questions'], row['answers'])
+                frozen_questions = [dict(q, ai_assessment=assessment)
+                                    for q, assessment in zip(row['questions'], assessments)]
                 row = c.execute('''UPDATE recertification_attempts
-                    SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
-                    (score, score >= row['pass_score'], aid)).fetchone()
+                    SET score=%s,passed=%s,questions=%s,submitted_at=now() WHERE id=%s RETURNING *''',
+                    (score, score >= row['pass_score'], Jsonb(frozen_questions), aid)).fetchone()
                 if row['mode'] == 'official' and row['passed']:
                     c.execute('UPDATE recertification_assignments SET completed_at=now() WHERE staff_id=%s AND restaurant=%s AND completed_at IS NULL',
                               (u['id'], u['restaurant']))
                 audit(c, u['id'], 'recertification:submit', aid)
-            return dict(public(row), review=[dict(q, answer=a, assessment=check(dict(q, lenient_recall=True), a))
+            return dict(public(row), review=[dict(q, answer=a, assessment=q.get('ai_assessment') or check(dict(q, lenient_recall=True), a))
                 for q, a in zip(row['questions'], row['answers'])])
 
     return router
