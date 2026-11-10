@@ -43,7 +43,7 @@ def choose_questions(cards, rng=None):
     rng.shuffle(selected)
     questions = menu_exam_questions(selected, 'control', 0)
     for q, card in zip(questions, selected):
-        q.update(section=card['section'], dish_id=card['dish_id'])
+        q.update(section=card['section'], dish_id=card['dish_id'], lenient_recall=True)
     return questions
 
 
