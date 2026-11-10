@@ -1,0 +1,152 @@
+"""Waiter-only, frozen 40-question main-menu recertification."""
+import random
+import uuid
+from fastapi import APIRouter, HTTPException, Request
+from psycopg.types.json import Jsonb
+from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
+from menu_assessments import menu_exam_questions
+from questions import public_question, grade_questions, check, normalize
+
+SECTIONS = ('Роллы', 'Азия', 'Салаты', 'Закуски', 'Супы', 'Горячее', 'Гриль')
+COUNT = 40
+PASS_SCORE = 80
+
+
+def waiter(user):
+    if user['role'] != 'waiter':
+        raise HTTPException(403, 'Переаттестация доступна только действующим официантам')
+
+
+def choose_questions(cards, rng=None):
+    rng = rng or random.SystemRandom()
+    groups = {s: [] for s in SECTIONS}
+    names = {normalize(s): s for s in SECTIONS}
+    seen = set()
+    for card in cards:
+        section = names.get(normalize(card['section']))
+        if section and card['dish_id'] not in seen:
+            groups[section].append(card)
+            seen.add(card['dish_id'])
+    if any(not items for items in groups.values()) or len(seen) < COUNT:
+        raise HTTPException(409, 'Нужны минимум 40 утверждённых блюд и все 7 разделов основного меню')
+    for items in groups.values():
+        rng.shuffle(items)
+    selected = []
+    # Balanced coverage, filling from other sections if a small section runs out.
+    while len(selected) < COUNT:
+        order = list(SECTIONS)
+        rng.shuffle(order)
+        for section in order:
+            if groups[section] and len(selected) < COUNT:
+                selected.append(groups[section].pop())
+    rng.shuffle(selected)
+    questions = menu_exam_questions(selected, 'control', 0)
+    for q, card in zip(questions, selected):
+        q.update(section=card['section'], dish_id=card['dish_id'])
+    return questions
+
+
+def make_router(db, require, manager, scope, audit):
+    router = APIRouter(prefix='/api/recertification')
+
+    def bank(c, user):
+        cards = []
+        for course in c.execute('''SELECT id,reviewed_dish_signature FROM courses
+            WHERE restaurant=%s AND published AND NOT archived
+            AND reviewed_dish_signature IS NOT NULL ORDER BY id DESC''',
+            (user['restaurant'],)).fetchall():
+            chapters = dish_chapters(c, course['id'], user['restaurant']) or []
+            if (len(chapters) == len(map_details(c, course['id'])) and chapters
+                    and reviewed_dish_signature(chapters) == course['reviewed_dish_signature']):
+                cards.extend(chapters)
+        return cards
+
+    def public(row):
+        return dict(id=str(row['id']), pass_score=row['pass_score'],
+                    questions=[dict(public_question(q), section=q['section']) for q in row['questions']],
+                    answers=row['answers'], score=row['score'], passed=row['passed'],
+                    submitted=row['submitted_at'] is not None, mode=row['mode'])
+
+    def own(c, user, aid):
+        row = c.execute('''SELECT * FROM recertification_attempts
+            WHERE id=%s AND staff_id=%s AND restaurant=%s FOR UPDATE''',
+            (aid, user['id'], user['restaurant'])).fetchone()
+        if not row:
+            raise HTTPException(404, 'Попытка не найдена')
+        return row
+
+    @router.get('/results')
+    def results(request: Request):
+        with db() as c:
+            u = require(c, request)
+            manager(u)
+            return c.execute('''SELECT a.id,s.name,a.restaurant,a.created_at,a.submitted_at,
+                a.score,a.passed FROM recertification_attempts a JOIN staff s ON s.id=a.staff_id
+                WHERE a.mode='official' AND a.submitted_at IS NOT NULL AND (%s OR a.restaurant=%s) ORDER BY a.created_at DESC LIMIT 200''',
+                (u['role'] == 'manager', u['restaurant'])).fetchall()
+
+    @router.post('/start')
+    async def start(request: Request):
+        raw = await request.body()
+        d = await request.json() if raw else {}
+        if not isinstance(d, dict) or d.get('mode', 'practice') not in ('practice', 'official'):
+            raise HTTPException(422, 'Выбери режим прохождения')
+        mode = d.get('mode', 'practice')
+        with db() as c:
+            u = require(c, request)
+            waiter(u)
+            c.execute('SELECT id FROM staff WHERE id=%s FOR UPDATE', (u['id'],))
+            if mode == 'official' and not c.execute(
+                "SELECT 1 FROM recertification_attempts WHERE staff_id=%s AND restaurant=%s AND mode='practice' AND submitted_at IS NOT NULL",
+                (u['id'], u['restaurant'])).fetchone():
+                raise HTTPException(409, 'Сначала заверши пробное прохождение для себя')
+            row = c.execute('''SELECT * FROM recertification_attempts
+                WHERE staff_id=%s AND restaurant=%s AND mode=%s AND submitted_at IS NULL''',
+                (u['id'], u['restaurant'], mode)).fetchone()
+            if not row:
+                questions = choose_questions(bank(c, u))
+                row = c.execute('''INSERT INTO recertification_attempts
+                    (id,staff_id,restaurant,questions,answers,pass_score,mode)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
+                    (uuid.uuid4(), u['id'], u['restaurant'], Jsonb(questions),
+                     Jsonb([None] * COUNT), PASS_SCORE, mode)).fetchone()
+                audit(c, u['id'], 'recertification:start', row['id'])
+            return public(row)
+
+    @router.post('/{aid}/answer')
+    async def answer(aid: uuid.UUID, request: Request):
+        d = await request.json()
+        if (not isinstance(d, dict) or type(d.get('index')) is not int
+                or not 0 <= d['index'] < COUNT or not isinstance(d.get('answer'), str)
+                or len(d['answer']) > 3000):
+            raise HTTPException(422, 'Некорректный ответ')
+        with db() as c:
+            u = require(c, request)
+            waiter(u)
+            row = own(c, u, aid)
+            if row['submitted_at']:
+                raise HTTPException(409, 'Тест уже завершён')
+            answers = row['answers']
+            answers[d['index']] = d['answer']
+            c.execute('UPDATE recertification_attempts SET answers=%s WHERE id=%s',
+                      (Jsonb(answers), aid))
+            return {'saved': True}
+
+    @router.post('/{aid}/submit')
+    def submit(aid: uuid.UUID, request: Request):
+        with db() as c:
+            u = require(c, request)
+            waiter(u)
+            row = own(c, u, aid)
+            if not row['submitted_at']:
+                if any(not isinstance(a, str) or not a.strip() for a in row['answers']):
+                    raise HTTPException(422, 'Ответь на все 40 вопросов')
+                score = grade_questions(row['questions'], row['answers'])
+                row = c.execute('''UPDATE recertification_attempts
+                    SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
+                    (score, score >= row['pass_score'], aid)).fetchone()
+                audit(c, u['id'], 'recertification:submit', aid)
+            return dict(public(row), review=[dict(q, answer=a, assessment=check(q, a))
+                for q, a in zip(row['questions'], row['answers'])])
+
+    return router

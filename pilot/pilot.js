@@ -120,7 +120,7 @@ if(view==='team'){cache=await api('team');const pending=cache.filter(s=>!s.activ
     '<div class="manager-stats"><div><strong>'+active.length+'</strong><span>активных</span></div><div><strong>'+pending.length+'</strong><span>ждут подтверждения</span></div></div>'+
     (pending.length?'<h2>Новые заявки</h2>'+pending.map(s=>'<div class="card manager-list"><strong>'+esc(s.name)+'</strong><p>'+esc(roles[s.role])+' · '+esc(s.restaurant)+'</p><p class="muted">Telegram ID: '+esc(s.id)+' · сверь лично перед одобрением</p>'+btn('Подтвердить доступ','approve-staff',s.id,'lime-action')+'</div>').join(''):'')+
     '<details class="card manager-list"><summary><strong>Пригласить сотрудника</strong><span>Одноразовая ссылка</span></summary><label>Пригласить как<select id="invite-role"><option value="trainee">Стажёр</option><option value="waiter">Официант</option></select></label>'+btn('Создать приглашение','invite')+'<div id="invite-result"></div></details>'+
-    '<h2>Сотрудники</h2>'+(active.length?active.map(s=>'<details class="card manager-list"><summary><strong>'+esc(s.name)+'</strong><span>'+esc(roles[s.role])+'</span></summary><p class="muted">'+esc(s.restaurant)+'</p>'+(s.role==='trainee'?btn('Перевести в официанты','promote',s.id,'secondary'):'')+'</details>').join(''):'<div class="card">Пока нет активных сотрудников.</div>');return}
+    btn('Результаты переаттестации','recert-results','','secondary')+'<h2>Сотрудники</h2>'+(active.length?active.map(s=>'<details class="card manager-list"><summary><strong>'+esc(s.name)+'</strong><span>'+esc(roles[s.role])+'</span></summary><p class="muted">'+esc(s.restaurant)+'</p>'+(s.role==='trainee'?btn('Перевести в официанты','promote',s.id,'secondary'):'')+'</details>').join(''):'<div class="card">Пока нет активных сотрудников.</div>');return}
 if(view==='courses'){await programsPage();return}}
 async function programsPage(){
   cache=await api('courses');
@@ -529,3 +529,4 @@ async function caseResults(id){
  const rows=await api('cases/'+id+'/results');
  $('#app').innerHTML=btn('К кейсам','nav','cases','secondary')+'<h1>Ответы команды</h1>'+ (rows.length?rows.map(r=>`<article class="card"><h2>${esc(r.name)}</h2><p class="muted">${esc(new Date(r.created_at).toLocaleString('ru-RU'))}</p><p class="body">${esc(r.answer)}</p><h3>Учебный разбор</h3><p>${esc(r.feedback.summary)}</p><p>${esc(r.feedback.strengths)}</p><p>${esc(r.feedback.improvements)}</p><h3>Следующий практический шаг</h3><p>${esc(r.feedback.next_step)}</p><p class="muted">Выполнение на смене подтверждает руководитель. Разбор ИИ не является допуском.</p></article>`).join(''):'<div class="card">Ответов пока нет.</div>');
 }
+
