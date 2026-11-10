@@ -36,7 +36,9 @@ jobs:
            await handler({...msg('/start'),from:{id:456}}); assert.equal(calls.length,1);
            await handler(msg('/starter')); assert.equal(calls.length,1);
            await handler(msg('/start@skill_mojo_bot')); assert.equal(calls.length,2);
-           await handler(msg('/start invite_token')); assert.match(calls.at(-1).text,/пока недоступна/);
+           const invite='Abcdefghijklmnopqrstuvwxyz123456';
+           await handler(msg('/start '+invite)); assert.equal(calls.at(-1).button.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/?invite='+invite);
+           assert.match(calls.at(-1).text,/заявку на доступ/);
            delete globalThis.__mojoTestApi;
            console.log('Handler tests passed: private chat, identity, command, button, invitation disclosure.');
            const token=process.env.TGCLOUD_TOKEN;
