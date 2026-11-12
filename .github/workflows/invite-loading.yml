@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      - run: node pilot/test_invite_startup.cjs
       - run: npm install --no-save playwright
       - run: npx playwright install --with-deps chromium
       - name: Check production page without employee data
