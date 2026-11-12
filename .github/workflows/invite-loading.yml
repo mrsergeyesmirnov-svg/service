@@ -29,7 +29,7 @@ jobs:
               console.log('LIVE_HTML',await r.text());
               const source=await (await page.request.get('https://service.139.100.239.232.sslip.io/pilot/pilot.js')).text();
               const lines=source.split('\n');
-              for(let i=0;i<lines.length;i++)if(/initData|ready\\(|browserLogin|start_param|login.*POST|invite=/.test(lines[i]))console.log('LIVE_SOURCE',i+1,lines.slice(Math.max(0,i-2),i+8).join('\n'));
+              for(let i=0;i<lines.length;i++)if(/initData|ready|browserLogin|start_param|login.*POST|invite=/.test(lines[i]))console.log('LIVE_SOURCE',i+1,lines.slice(Math.max(0,i-2),i+8).join('\n'));
               console.log('PAGE_HEADERS',JSON.stringify(r.headers()));
               console.log('VISIBLE_PAGE',await page.locator('body').innerText());
               console.log('SDK',await page.evaluate(()=>({present:!!window.Telegram?.WebApp,version:window.Telegram?.WebApp?.version})));
