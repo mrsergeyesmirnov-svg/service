@@ -1,0 +1,39 @@
+name: Diagnose Mini App loading
+on:
+  push:
+    branches: [fix/invite-loading-20261112]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - run: node pilot/test_invite_startup.cjs
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Check production page without employee data
+        run: |
+          node <<'NODE'
+          const {chromium}=require('playwright');
+          (async()=>{
+            const browser=await chromium.launch();
+            const page=await browser.newPage();
+            page.on('pageerror',e=>console.log('PAGE_ERROR',e.message));
+            page.on('requestfailed',r=>console.log('REQUEST_FAILED',new URL(r.url()).pathname,r.failure()?.errorText));
+            page.on('response',r=>{if(r.status()>=400)console.log('HTTP_ERROR',r.status(),new URL(r.url()).pathname)});
+            try {
+              const r=await page.goto('https://service.139.100.239.232.sslip.io/pilot/',{waitUntil:'load',timeout:45000});
+              console.log('PAGE_STATUS',r.status());
+              console.log('LIVE_HTML',await r.text());
+              const source=await (await page.request.get('https://service.139.100.239.232.sslip.io/pilot/pilot.js')).text();
+              const lines=source.split('\n');
+              for(let i=0;i<lines.length;i++)if(/initData|ready|browserLogin|start_param|login.*POST|invite=/.test(lines[i]))console.log('LIVE_SOURCE',i+1,lines.slice(Math.max(0,i-2),i+8).join('\n'));
+              console.log('PAGE_HEADERS',JSON.stringify(r.headers()));
+              console.log('VISIBLE_PAGE',await page.locator('body').innerText());
+              console.log('SDK',await page.evaluate(()=>({present:!!window.Telegram?.WebApp,version:window.Telegram?.WebApp?.version})));
+            } finally {await browser.close()}
+          })().catch(e=>{console.error(e.message);process.exit(1)});
+          NODE
