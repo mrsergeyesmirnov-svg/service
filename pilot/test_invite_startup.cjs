@@ -17,3 +17,13 @@ async function run(initData){
  else assert.equal(request,undefined);
 }
 (async()=>{await run('');await run('signed-test-data');console.log('Telegram readiness and invitation forwarding: OK')})().catch(e=>{console.error(e);process.exit(1)});
+
+const patchInstalled=require('./invite_startup_patch.cjs');
+const installed="const tg=window.Telegram?.WebApp; if(!tg?.initData){browserGate();return} tg.ready();tg.expand(); await api('login','POST',{initData:tg.initData},15000);";
+const fixedInstalled=patchInstalled(installed);
+assert(fixedInstalled.indexOf('tg?.ready()')<fixedInstalled.indexOf('if(!tg?.initData)'));
+assert(fixedInstalled.includes('browserGate();return'));
+assert(fixedInstalled.includes("get('invite')"));
+assert.equal(patchInstalled(fixedInstalled),fixedInstalled);
+new vm.Script('(async()=>{'+fixedInstalled+'})()');
+assert.throws(()=>patchInstalled('unrecognized file'));
