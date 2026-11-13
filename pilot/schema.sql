@@ -356,3 +356,6 @@ ALTER TABLE recertification_attempts DROP CONSTRAINT IF EXISTS recertification_a
 ALTER TABLE recertification_attempts DROP CONSTRAINT IF EXISTS recertification_attempts_answers_check;
 ALTER TABLE recertification_attempts ADD CONSTRAINT recertification_attempts_questions_check CHECK(jsonb_array_length(questions) IN (30,40));
 ALTER TABLE recertification_attempts ADD CONSTRAINT recertification_attempts_answers_check CHECK(jsonb_array_length(answers)=jsonb_array_length(questions));
+
+-- Keep historical results when staff access is removed.
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ;

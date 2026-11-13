@@ -158,6 +158,23 @@ class Integration(unittest.TestCase):
     def auth(self,uid):
         r=self.client.post('/api/login',json={'initData':signed(uid)});self.assertEqual(r.status_code,200,r.text)
         return {'Authorization':'Bearer '+r.json()['token']}
+    def test_remove_staff_revokes_access_and_preserves_history(self):
+        owner=self.auth(999);student=self.auth(101);outside=self.auth(103)
+        self.assertEqual(self.client.delete('/api/team/102',headers=student).status_code,403)
+        self.assertEqual(self.client.delete('/api/team/101',headers=outside).status_code,403)
+        self.assertEqual(self.client.delete('/api/team/999',headers=owner).status_code,403)
+        self.assertEqual(self.client.delete('/api/team/103',headers=owner).status_code,403)
+        self.assertEqual(self.client.delete('/api/team/101',headers=owner).status_code,200)
+        self.assertEqual(self.client.get('/api/me',headers=student).status_code,401)
+        self.assertEqual(self.client.post('/api/login',json={'initData':signed(101)}).status_code,403)
+        self.assertEqual(self.client.post('/api/team/101/approve',headers=owner).status_code,409)
+        self.assertFalse(any(s['id']==101 for s in self.client.get('/api/team',headers=owner).json()))
+        with server.db() as c:
+            row=c.execute('SELECT * FROM staff WHERE id=101').fetchone()
+            self.assertFalse(row['active'])
+            self.assertIsNotNone(row['removed_at'])
+        self.assertEqual(self.client.delete('/api/team/101',headers=owner).status_code,200)
+
     def test_event_creation_role_scope_and_signups(self):
         from datetime import datetime, timedelta, timezone
         manager=self.auth(999);student=self.auth(101);other=self.auth(103)

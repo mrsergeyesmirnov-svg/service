@@ -186,7 +186,22 @@ def me(request:Request):
 def team(request:Request):
     with db() as c:
         u=require(c,request);manager(u)
-        return c.execute('SELECT id,name,role,restaurant,phone,active,bot_started FROM staff WHERE (%s OR restaurant=%s) ORDER BY name',(u['role']=='manager',u['restaurant'])).fetchall()
+        return c.execute('SELECT id,name,role,restaurant,phone,active,bot_started FROM staff WHERE removed_at IS NULL AND (%s OR restaurant=%s) ORDER BY name',(u['role']=='manager',u['restaurant'])).fetchall()
+
+@app.delete('/api/team/{staff_id}')
+def remove_member(staff_id:int, request:Request):
+    with db() as c:
+        u=require(c,request);manager(u)
+        target=c.execute('SELECT * FROM staff WHERE id=%s FOR UPDATE',(staff_id,)).fetchone()
+        if not target:raise HTTPException(404,'Сотрудник не найден')
+        scope(u,target['restaurant'])
+        if staff_id == u['id'] or target['role'] in ('manager','local'):
+            raise HTTPException(403,'Нельзя удалить себя или руководителя')
+        c.execute('UPDATE staff SET active=false,removed_at=COALESCE(removed_at,now()) WHERE id=%s',(staff_id,))
+        c.execute('DELETE FROM sessions WHERE staff_id=%s',(staff_id,))
+        c.execute("UPDATE outbox SET state='failed',error='Staff access removed' WHERE recipient=%s AND state='pending'",(staff_id,))
+        audit(c,u['id'],'staff:removed',staff_id)
+    return {'removed':True}
 
 @app.post('/api/team/{staff_id}/role')
 async def set_role(staff_id:int,request:Request):
@@ -209,6 +224,7 @@ def approve_member(staff_id:int, request:Request):
         target=c.execute('SELECT * FROM staff WHERE id=%s FOR UPDATE',(staff_id,)).fetchone()
         if not target:raise HTTPException(404,'Заявка не найдена')
         scope(u,target['restaurant'])
+        if target['removed_at'] is not None:raise HTTPException(409,'Сотрудник удалён')
         if target['role'] not in ('trainee','waiter'):
             raise HTTPException(403,'Нельзя подтверждать руководителей через приглашение')
         if not c.execute('SELECT 1 FROM invites WHERE used_by=%s LIMIT 1',(staff_id,)).fetchone():
