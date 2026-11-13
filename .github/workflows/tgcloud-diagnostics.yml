@@ -37,6 +37,7 @@ jobs:
             const state = await read('/get');
             console.log(JSON.stringify({
               revision: state.revision,
+              message_sha256: require('node:crypto').createHash('sha256').update((state.canonical_modules?.['handlers/message'] || '').trim()).digest('hex'),
               modules: Object.keys(state.canonical_modules || {}),
               message_handler_present: Object.hasOwn(state.canonical_modules || {}, 'handlers/message')
             }));
