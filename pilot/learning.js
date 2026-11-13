@@ -23,12 +23,16 @@ function reviewQuestion(q,a,i){
   const partial=(assessment?.incomplete||[]).map(item=>
    '«'+esc(item.answer)+'» — уточни: '+esc((item.expected||[]).join(' / '))).join('; ');
   return '<article class="card"><h3>'+(i+1)+'. '+esc(q.question)+'</h3>'+recognized+
+   (assessment?.recognized_ingredients?.length?'<p><strong>Засчитано:</strong> '+esc(assessment.recognized_ingredients.join(', '))+'</p>':'')+
+   (assessment?.uncertain?.length?'<p><strong>Проверит менеджер:</strong> '+esc(assessment.uncertain.join(', '))+'</p>':'')+
+   (assessment?.contradictions?.length?'<p><strong>Требует рассмотрения:</strong> '+esc(assessment.contradictions.join('; '))+'</p>':'')+
+   (assessment?.components?'<details><summary>Почему приняты решения</summary>'+assessment.components.map(c=>'<p><strong>'+esc(c.ingredient)+'</strong>: '+esc(c.reason)+(c.evidence?' · «'+esc(c.evidence)+'»':'')+'</p>').join('')+'</details>':'')+
    (assessment?.missing?.length?'<p><strong>Не хватает:</strong> '+esc(assessment.missing.join(', '))+'</p>':'')+
    (partial?'<p class="muted"><strong>Неполные названия:</strong> '+partial+'</p>':'')+
    (assessment?.extra?.length?'<p><strong>Лишнее:</strong> '+esc(assessment.extra.join(', '))+'</p>':'')+
    '<details><summary>Сравнить ответ с эталоном</summary><p>Твой ответ: '+esc(answerLabel(q,a))+
    '</p><p>Эталон: '+esc(correctLabel(q))+'</p></details>'+
-   '<p class="muted">Состав проверяется по ТТК. Если у блюда есть допустимые сокращения, их должен утвердить менеджер.</p>'+
+   '<p class="muted">'+(assessment?.grader==='yandex_ai'?'Смысл ответа проверен по утверждённой ТТК. Спорные компоненты рассматривает менеджер.':'Историческая или учебная проверка по ТТК.')+'</p>'+
    '<details><summary>Источник</summary><p class="muted">'+esc(q.source)+'</p></details></article>';
  }
  return '<article class="card"><h3>'+(i+1)+'. '+esc(q.question)+'</h3>'+
