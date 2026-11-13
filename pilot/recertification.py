@@ -1,10 +1,13 @@
 """Waiter-only, frozen 30-question main-menu recertification."""
 import random
+import os
 import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from psycopg.types.json import Jsonb
 from menu_assessments import menu_exam_questions
-from questions import public_question, grade_questions, check, normalize
+from questions import public_question, normalize
+from recertification_ai import evaluate_question, attempt_summary, resolve_assessment
 
 SECTIONS = ('Роллы', 'Азия', 'Салаты', 'Закуски', 'Супы', 'Горячее', 'Гриль')
 COUNT = 30
@@ -43,7 +46,7 @@ def choose_questions(cards, rng=None):
     rng.shuffle(selected)
     questions = menu_exam_questions(selected, 'control', 0)
     for q, card in zip(questions, selected):
-        q.update(section=card['section'], dish_id=card['dish_id'])
+        q.update(section=card['section'], dish_id=card['dish_id'], dish_title=card['title'])
     return questions
 
 
@@ -74,10 +77,25 @@ def make_router(db, require, manager, scope, audit):
         ]
 
     def public(row):
+        evaluation = (attempt_summary(row['questions']) if row['questions'][0].get('submission_locked')
+                      else {'state': 'legacy' if row['submitted_at'] else 'editing'})
         return dict(id=str(row['id']), pass_score=row['pass_score'],
                     questions=[dict(public_question(q), section=q['section']) for q in row['questions']],
                     answers=row['answers'], score=row['score'], passed=row['passed'],
-                    submitted=row['submitted_at'] is not None, mode=row['mode'])
+                    submitted=row['submitted_at'] is not None, mode=row['mode'],
+                    locked=bool(row['questions'][0].get('submission_locked')), evaluation=evaluation)
+
+    def report(row):
+        # Historical attempts are displayed as historical, never silently regraded.
+        review = [dict(q, answer=a, assessment=q.get('ai_assessment'))
+                  for q, a in zip(row['questions'], row['answers'])] if row['submitted_at'] else []
+        return dict(public(row), review=review)
+
+    def complete_assignment(c, row):
+        if row['mode'] == 'official' and row['passed']:
+            c.execute('''UPDATE recertification_assignments SET completed_at=now()
+                WHERE staff_id=%s AND restaurant=%s AND completed_at IS NULL''',
+                (row['staff_id'], row['restaurant']))
 
     def own(c, user, aid):
         row = c.execute('''SELECT * FROM recertification_attempts
@@ -122,10 +140,14 @@ def make_router(db, require, manager, scope, audit):
         with db() as c:
             u = require(c, request)
             manager(u)
-            return c.execute('''SELECT a.id,s.name,a.restaurant,a.created_at,a.submitted_at,
-                a.score,a.passed FROM recertification_attempts a JOIN staff s ON s.id=a.staff_id
+            rows = c.execute('''SELECT a.id,s.name,a.restaurant,a.created_at,a.submitted_at,
+                a.score,a.passed,a.questions FROM recertification_attempts a JOIN staff s ON s.id=a.staff_id
                 WHERE a.mode='official' AND a.submitted_at IS NOT NULL AND (%s OR a.restaurant=%s) ORDER BY a.created_at DESC LIMIT 200''',
                 (u['role'] == 'manager', u['restaurant'])).fetchall()
+            for row in rows:
+                questions = row.pop('questions')
+                row['needs_review'] = bool(questions[0].get('submission_locked') and attempt_summary(questions)['needs_review'])
+            return rows
 
     @router.post('/start')
     async def start(request: Request):
@@ -143,7 +165,9 @@ def make_router(db, require, manager, scope, audit):
                 (u['id'], u['restaurant'])).fetchone():
                 raise HTTPException(409, 'Сначала заверши пробное прохождение для себя')
             row = c.execute('''SELECT * FROM recertification_attempts
-                WHERE staff_id=%s AND restaurant=%s AND mode=%s AND submitted_at IS NULL''',
+                WHERE staff_id=%s AND restaurant=%s AND mode=%s
+                  AND (submitted_at IS NULL OR (mode='official' AND score IS NULL))
+                ORDER BY created_at DESC LIMIT 1''',
                 (u['id'], u['restaurant'], mode)).fetchone()
             if not row:
                 questions = choose_questions(bank(c, u))
@@ -166,8 +190,8 @@ def make_router(db, require, manager, scope, audit):
             u = require(c, request)
             waiter(u)
             row = own(c, u, aid)
-            if row['submitted_at']:
-                raise HTTPException(409, 'Тест уже завершён')
+            if row['submitted_at'] or row['questions'][0].get('submission_locked'):
+                raise HTTPException(409, 'Ответы уже отправлены на проверку')
             if d['index'] >= len(row['questions']):
                 raise HTTPException(422, 'Некорректный номер вопроса')
             answers = row['answers']
@@ -181,19 +205,95 @@ def make_router(db, require, manager, scope, audit):
         with db() as c:
             u = require(c, request)
             waiter(u)
-            row = own(c, u, aid)
-            if not row['submitted_at']:
-                if any(not isinstance(a, str) or not a.strip() for a in row['answers']):
+            # Session lock survives progress commits and is released on disconnect.
+            # Only one question is evaluated per request: bounded latency, resumable progress.
+            lock = aid.int % (2**63)
+            if not c.execute('SELECT pg_try_advisory_lock(%s) AS locked', (lock,)).fetchone()['locked']:
+                raise HTTPException(409, 'Проверка этой попытки уже выполняется. Подожди и повтори.')
+            try:
+                row = own(c, u, aid)
+                if row['submitted_at']:
+                    return report(row)
+                if (len(row['answers']) != len(row['questions']) or
+                        any(not isinstance(a, str) or not a.strip() or len(a) > 3000 for a in row['answers'])):
                     raise HTTPException(422, f"Ответь на все {len(row['questions'])} вопросов")
-                score = grade_questions(row['questions'], row['answers'])
-                row = c.execute('''UPDATE recertification_attempts
-                    SET score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
-                    (score, score >= row['pass_score'], aid)).fetchone()
-                if row['mode'] == 'official' and row['passed']:
-                    c.execute('UPDATE recertification_assignments SET completed_at=now() WHERE staff_id=%s AND restaurant=%s AND completed_at IS NULL',
-                              (u['id'], u['restaurant']))
-                audit(c, u['id'], 'recertification:submit', aid)
-            return dict(public(row), review=[dict(q, answer=a, assessment=check(q, a))
-                for q, a in zip(row['questions'], row['answers'])])
+                questions = row['questions']
+                if not questions[0].get('submission_locked'):
+                    questions[0]['submission_locked'] = True
+                    for q in questions:
+                        q['ai_model'] = os.getenv('YANDEX_RECERTIFICATION_MODEL', 'yandexgpt-5.1')
+                    c.execute('UPDATE recertification_attempts SET questions=%s WHERE id=%s', (Jsonb(questions), aid))
+                    audit(c, u['id'], 'recertification:answers-frozen', aid)
+                c.commit()
+                for i, q in enumerate(questions):
+                    if 'ai_assessment' not in q:
+                        q['ai_assessment'] = evaluate_question(q, row['answers'][i])
+                        c.execute('UPDATE recertification_attempts SET questions=%s WHERE id=%s', (Jsonb(questions), aid))
+                        c.commit()
+                        break
+                summary = attempt_summary(questions)
+                if summary['state'] != 'grading':
+                    score = None if summary['needs_review'] else summary['provisional_score']
+                    row = c.execute('''UPDATE recertification_attempts SET questions=%s,
+                        score=%s,passed=%s,submitted_at=now() WHERE id=%s RETURNING *''',
+                        (Jsonb(questions), score, None if score is None else score >= row['pass_score'], aid)).fetchone()
+                    complete_assignment(c, row)
+                    audit(c, u['id'], 'recertification:submit', aid)
+                else:
+                    row['questions'] = questions
+                return report(row)
+            finally:
+                # Roll back an unsuccessful query before unlocking, never a committed assessment.
+                c.rollback() if c.info.transaction_status.name == 'INERROR' else None
+                c.execute('SELECT pg_advisory_unlock(%s)', (lock,))
+
+    @router.get('/{aid}')
+    def detail(aid: uuid.UUID, request: Request):
+        with db() as c:
+            u = require(c, request)
+            row = c.execute('SELECT * FROM recertification_attempts WHERE id=%s', (aid,)).fetchone()
+            if not row:
+                raise HTTPException(404, 'Попытка не найдена')
+            if row['staff_id'] != u['id']:
+                manager(u)
+                scope(u, row['restaurant'])
+            return report(row)
+
+    @router.post('/{aid}/review')
+    async def review(aid: uuid.UUID, request: Request):
+        data = await request.json()
+        with db() as c:
+            u = require(c, request)
+            manager(u)
+            row = c.execute('SELECT * FROM recertification_attempts WHERE id=%s FOR UPDATE', (aid,)).fetchone()
+            if not row:
+                raise HTTPException(404, 'Попытка не найдена')
+            scope(u, row['restaurant'])
+            if not row['submitted_at'] or not row['questions'][0].get('submission_locked'):
+                raise HTTPException(409, 'Нет завершённого ИИ-разбора для проверки')
+            if not attempt_summary(row['questions'])['needs_review']:
+                return report(row)
+            required = {i for i, q in enumerate(row['questions']) if q['ai_assessment']['needs_review']}
+            decisions = data.get('questions') if isinstance(data, dict) else None
+            if (not isinstance(decisions, list) or len(decisions) != len(required)
+                    or any(not isinstance(d, dict) or type(d.get('index')) is not int for d in decisions)
+                    or {d['index'] for d in decisions} != required):
+                raise HTTPException(422, 'Проверь все спорные вопросы')
+            try:
+                for d in decisions:
+                    q = row['questions'][d['index']]
+                    if q['ai_assessment']['contradictions'] and d.get('acknowledged_contradictions') is not True:
+                        raise ValueError('Подтверди рассмотрение противоречий')
+                    assessment = resolve_assessment(q['ai_assessment'], row['answers'][d['index']], d.get('components'))
+                    assessment.update(reviewed_by=u['id'], reviewed_at=datetime.now(timezone.utc).isoformat())
+                    q['ai_assessment'] = assessment
+            except ValueError as exc:
+                raise HTTPException(422, str(exc))
+            score = attempt_summary(row['questions'])['provisional_score']
+            row = c.execute('''UPDATE recertification_attempts SET questions=%s,score=%s,passed=%s
+                WHERE id=%s RETURNING *''', (Jsonb(row['questions']), score, score >= row['pass_score'], aid)).fetchone()
+            complete_assignment(c, row)
+            audit(c, u['id'], 'recertification:review', aid)
+            return report(row)
 
     return router

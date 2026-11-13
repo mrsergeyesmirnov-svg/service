@@ -47,6 +47,7 @@ jobs:
           node --check pilot/menu_cards.js
           node --check pilot/menu_assessments.js
           node --check pilot/recertification.js
+          (cd pilot && node test_recertification_ui.cjs)
           node --check pilot/events.js
           node --check pilot/onboarding.js
           (cd pilot && node test_admin_nav.cjs)
@@ -77,5 +78,5 @@ jobs:
           curl -sSI --connect-timeout 5 --max-time 15 https://service.139.100.239.232.sslip.io/pilot/ |
             grep -Ei '^(HTTP/|x-frame-options:|content-security-policy:|cross-origin|location:|server:)' || true
       - name: Unit and isolated PostgreSQL integration tests
-        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_ingredient_recognition test_onboarding test_recertification
+        run: python -m unittest test_dishes test_cases test_pilot test_wine_cards test_menu_cards test_course_generation test_service_package test_menu_assessments test_ingredient_recognition test_onboarding test_recertification test_recertification_ai test_recertification_live
 
