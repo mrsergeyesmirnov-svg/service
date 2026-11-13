@@ -1,6 +1,9 @@
 name: Deploy Academy TGCloud start handler
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/tgcloud-start-deploy.yml]
 permissions:
   contents: read
 concurrency:
@@ -53,7 +56,7 @@ jobs:
            console.log('Bot identity verified: @skill_mojo_bot');
            const before=await request('/get');
            const modules=before.canonical_modules||{};
-           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && (modules['handlers/message']===source || require('node:crypto').createHash('sha256').update(modules['handlers/message'].trim()).digest('hex')==='3d00fb08c25d35306065c493990450d681bbf292b5c0801b6492d8222920e2d4'))) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
+           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && (modules['handlers/message']===source || require('node:crypto').createHash('sha256').update(modules['handlers/message'].trim()).digest('hex')==='fabef220b43782a50a0b755c07f270c5bbf3b27e478b653daa3de8bf8101890f'))) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
            const compile=await request('/run',{module:'handlers/message',sources:{'handlers/message':source},args:{chat:{type:'group',id:0}},ctx:{}});
            if(compile.result?.__error) throw new Error('Runtime validation failed');
            const deployed=await request('/deploy',{expected_revision:before.revision,manifest:['handlers/message'],changed_sources:{'handlers/message':source}});
