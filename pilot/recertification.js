@@ -10,7 +10,8 @@ function recertRender(){
    await api('recertification/'+recert.id+'/answer','POST',{index:recertIndex,answer});
    recert.answers[recertIndex]=answer;
    if(direction===1&&recertIndex===recert.questions.length-1){
-    const result=await api('recertification/'+recert.id+'/submit','POST',{});
+    $('#recert-status').textContent='ИИ проверяет ответы. Это может занять несколько минут.';
+    const result=await api('recertification/'+recert.id+'/submit','POST',{},420000);
     $('#app').innerHTML='<h1>Результат переаттестации</h1><section class="card"><h2>'+result.score+'%</h2><p>'+(result.passed?'Сдано':'Не сдано')+' · Проходной балл '+result.pass_score+'%. '+(result.mode==='practice'?'Пробный результат виден только тебе.':'Результат доступен руководству.')+'</p>'+btn('К программе','nav','catalog','secondary')+'</section><details><summary>Разбор ответов</summary>'+result.review.map((q,i)=>reviewQuestion(q,q.answer,i)).join('')+'</details>';
    }else{recertIndex+=direction;recertRender()}
   }catch(e){error(e);form.querySelectorAll('button').forEach(b=>b.disabled=false)}

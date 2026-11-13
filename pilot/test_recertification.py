@@ -1,6 +1,7 @@
 import os
 import random
 import unittest
+from unittest.mock import patch
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 from recertification import choose_questions, waiter, SECTIONS
@@ -52,7 +53,10 @@ class RecertificationIntegration(unittest.TestCase):
         self.assertEqual(len(response.json()['questions']), 30)
         self.assertEqual({q['section'] for q in response.json()['questions']}, set(SECTIONS))
 
-    def test_recertification_access_freezing_resume_and_submit(self):
+    @patch("recertification_ai.evaluate_batch")
+    def test_recertification_access_freezing_resume_and_submit(self, ai):
+        ai.side_effect = lambda qs, answers: [dict(fraction=1, recognized=2, total=2,
+            missing=[], extra=[], incomplete=[], grader="yandex_ai") for q in qs]
         trainee=self.auth(101);wait=self.auth(102);manager=self.auth(999)
         base='/api/recertification'
         self.assertEqual(self.client.post(base+'/assign',headers=trainee,json={'staff_id':102}).status_code,403)
@@ -72,9 +76,19 @@ class RecertificationIntegration(unittest.TestCase):
             self.assertEqual(r.status_code,200,r.text)
         resumed=self.client.post(base+'/start',headers=wait).json()
         self.assertEqual(resumed['answers'],['Рис, Нори']*30)
+        with patch('recertification.evaluate_attempt', side_effect=HTTPException(503, 'AI unavailable')):
+            self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).status_code,503)
+        after_failure=self.client.post(base+'/start',headers=wait).json()
+        self.assertEqual(after_failure['id'],aid)
+        self.assertEqual(after_failure['answers'],['Рис, Нори']*30)
+        self.assertFalse(after_failure['submitted'])
+        self.assertIsNone(after_failure['score'])
         r=self.client.post(base+'/'+aid+'/submit',headers=wait);self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(ai.call_count,6)
+        self.assertTrue(all(q['assessment']['grader']=='yandex_ai' for q in r.json()['review']))
         self.assertTrue(r.json()['passed']);self.assertEqual(r.json()['score'],100)
         self.assertEqual(self.client.post(base+'/'+aid+'/submit',headers=wait).json(),r.json())
+        self.assertEqual(ai.call_count,6)
         self.assertEqual(self.client.get(base+'/results',headers=trainee).status_code,403)
         self.assertEqual(len(self.client.get(base+'/results',headers=manager).json()),0)
         official=self.client.post(base+'/start',headers=wait,json={'mode':'official'}).json()
