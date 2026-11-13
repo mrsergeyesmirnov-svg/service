@@ -103,6 +103,68 @@ def grade_ingredient_answer(q, answer):
                 recognized=len(hits),total=len(groups),incomplete=incomplete)
 
 
+# Restaurant recertification checks ingredient identity, not verbatim TTK wording.
+# Keep the strict matcher for course assessments and manager-authored quizzes.
+_GENERIC_WORDS = {'соус', 'масло', 'сыр', 'перец', 'соль', 'вода', 'сахар', 'мука', 'рис'}
+_DESCRIPTOR_WORDS = {'свежие', 'свежий', 'свежая', 'жареные', 'жареный',
+    'жареная', 'молотый', 'оливковое', 'консерв', 'темпуре', 'темпура',
+    'фритюре', 'крахмале', 'кисло', 'сладкий', 'сладком',
+    'ев', 'пф', 'во', 'в', 'со', 'с', 'к'}
+
+
+def grade_recertification_answer(q, answer):
+    """Give credit for unambiguous ingredient heads and reasonable shorthand.
+
+    One answer occurrence can credit only one ingredient. Generic heads such
+    as 'соус' cannot credit a specific sauce without a distinguishing word.
+    """
+    groups = q['ingredients']
+    segments = _answer_segments(answer)
+    words = [word for segment in segments for word in segment]
+    used = [False] * len(words)
+    canonical = [ingredient_words(group[0]) for group in groups]
+    hits = set()
+
+    # First consume exact full ingredient phrases, then specific shorthand.
+    candidates = []
+    for i, group in enumerate(groups):
+        for alias in group:
+            tokens = ingredient_words(alias)
+            if tokens:
+                candidates.append((i, tokens, True))
+        tokens = canonical[i]
+        distinctive = [w for w in tokens if w not in _GENERIC_WORDS and w not in _DESCRIPTOR_WORDS]
+        # Do not let a generic word match a specific sauce/oil/cheese.
+        if distinctive:
+            for w in distinctive:
+                if len(w) >= 4:
+                    candidates.append((i, (w,), False))
+        elif len(tokens) == 1:
+            candidates.append((i, tokens, True))
+    candidates.sort(key=lambda item: (-len(item[1]), not item[2], item[0]))
+    for i, phrase, _ in candidates:
+        if i in hits:
+            continue
+        n = len(phrase)
+        for start in range(len(words) - n + 1):
+            if any(used[start:start+n]):
+                continue
+            span = tuple(words[start:start+n])
+            if span == phrase or (n == 2 and span == phrase[::-1]):
+                hits.add(i)
+                for j in range(start, start+n):
+                    used[j] = True
+                break
+
+    # Modifiers belonging to recognized ingredients are not extra ingredients.
+    # Extra-ingredient penalties are avoided in this recall exam: a false
+    # positive ('тайский' as a separate ingredient) is worse than simply
+    # displaying unmatched words for human review.
+    missing = [groups[i][0] for i in range(len(groups)) if i not in hits]
+    return dict(fraction=len(hits)/len(groups), missing=missing, extra=[],
+                recognized=len(hits), total=len(groups), incomplete=[])
+
+
 def check(q, answer):
     kind=q.get('type','single')
     if kind=='single':
@@ -116,7 +178,8 @@ def check(q, answer):
     if kind=='ingredients':
         if not isinstance(answer,str) or not answer.strip() or len(answer)>3000:
             raise HTTPException(422,'Перечислите состав блюда')
-        return grade_ingredient_answer(q,answer)
+        return (grade_recertification_answer(q,answer) if q.get('lenient_recall')
+                else grade_ingredient_answer(q,answer))
     raise HTTPException(422,'Неизвестный формат вопроса')
 
 def grade_questions(qs, answers):
