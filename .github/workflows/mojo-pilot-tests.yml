@@ -40,6 +40,7 @@ jobs:
         working-directory: .
         run: |
           node tgcloud/test_invite_handler.cjs
+          node pilot/test_telegram_login.cjs
           node --check pilot/pilot.js
           node --check pilot/dishes.js
           node --check pilot/learning.js
