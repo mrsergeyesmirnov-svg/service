@@ -26,18 +26,18 @@ jobs:
           (async () => {
            const source = fs.readFileSync('tgcloud/handlers/message.js','utf8');
            const calls = [];
-           globalThis.__mojoTestApi = {sendMessage: async x => {calls.push(x);return {message_id:1}}, editMessageReplyMarkup: async x => {calls[calls.length-1].button = x.reply_markup}};
+           globalThis.__mojoTestApi = {sendMessage: async x => {calls.push(x);return {message_id:1}}};
            const mocked = source.replace("import { api } from 'sdk';", "const api = globalThis.__mojoTestApi;");
            const {default: handler} = await import('data:text/javascript;base64,'+Buffer.from(mocked).toString('base64'));
            const msg = text => ({text,chat:{type:'private',id:123},from:{id:123}});
            await handler(msg('/start')); assert.equal(calls.length,1);
-           assert.equal(calls[0].button.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/');
+           assert.equal(calls[0].reply_markup.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/');
            await handler({...msg('/start'),chat:{type:'group',id:123}}); assert.equal(calls.length,1);
            await handler({...msg('/start'),from:{id:456}}); assert.equal(calls.length,1);
            await handler(msg('/starter')); assert.equal(calls.length,1);
            await handler(msg('/start@skill_mojo_bot')); assert.equal(calls.length,2);
            const invite='Abcdefghijklmnopqrstuvwxyz123456';
-           await handler(msg('/start '+invite)); assert.equal(calls.at(-1).button.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/?invite='+invite);
+           await handler(msg('/start '+invite)); assert.equal(calls.at(-1).reply_markup.inline_keyboard[0][0].web_app.url,'https://service.139.100.239.232.sslip.io/pilot/?invite='+invite);
            assert.match(calls.at(-1).text,/заявку на доступ/);
            delete globalThis.__mojoTestApi;
            console.log('Handler tests passed: private chat, identity, command, button, invitation disclosure.');
@@ -56,7 +56,7 @@ jobs:
            console.log('Bot identity verified: @skill_mojo_bot');
            const before=await request('/get');
            const modules=before.canonical_modules||{};
-           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && (modules['handlers/message']===source || require('node:crypto').createHash('sha256').update(modules['handlers/message'].trim()).digest('hex')==='fabef220b43782a50a0b755c07f270c5bbf3b27e478b653daa3de8bf8101890f'))) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
+           if(Object.keys(modules).length && !(Object.keys(modules).length===1 && (modules['handlers/message']===source || require('node:crypto').createHash('sha256').update(modules['handlers/message'].trim()).digest('hex')==='543c86a3bfecc8af5e2844e527ad508b405d560a58658330c8e2197d1de04488'))) throw new Error('Cloud has changed; refusing to overwrite existing handlers');
            const compile=await request('/run',{module:'handlers/message',sources:{'handlers/message':source},args:{chat:{type:'group',id:0}},ctx:{}});
            if(compile.result?.__error) throw new Error('Runtime validation failed');
            const deployed=await request('/deploy',{expected_revision:before.revision,manifest:['handlers/message'],changed_sources:{'handlers/message':source}});
