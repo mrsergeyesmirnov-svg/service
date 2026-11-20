@@ -14,6 +14,20 @@ def signed(uid=101,age=0):
     return urlencode(d)
 
 class Core(unittest.TestCase):
+    def test_static_cache_and_compression_keep_entrypoint_fresh(self):
+        client=TestClient(server.app)
+        page=client.get('/pilot/')
+        self.assertEqual(page.headers['cache-control'],'no-store')
+        asset=client.get('/pilot/pilot.js?v=startup-test',headers={'Accept-Encoding':'gzip'})
+        self.assertEqual(asset.status_code,200)
+        self.assertIn('max-age=86400',asset.headers['cache-control'])
+        self.assertEqual(asset.headers['content-encoding'],'gzip')
+        self.assertIn('Accept-Encoding',asset.headers['vary'])
+        unversioned=client.get('/pilot/pilot.js')
+        self.assertEqual(unversioned.headers['cache-control'],'no-store')
+        missing=client.get('/pilot/missing.js?v=test')
+        self.assertEqual(missing.headers['cache-control'],'no-store')
+
     def test_telegram_bot_health_requires_recent_successful_poll(self):
         now = 1800000000
         self.assertFalse(server.telegram_poll_fresh(None, now=now))
@@ -141,6 +155,36 @@ class Core(unittest.TestCase):
 
 @unittest.skipUnless(os.getenv('DATABASE_URL'),'requires disposable PostgreSQL test schema')
 class Integration(unittest.TestCase):
+    def test_removed_staff_reapplies_only_with_fresh_invite(self):
+        owner=self.auth(999)
+        self.client.delete('/api/team/101',headers=owner)
+        blocked=self.client.post('/api/login',json={'initData':signed(101)})
+        self.assertIn('Доступ был закрыт',blocked.json()['detail'])
+        invalid=self.client.post('/api/login',json={'initData':signed(101),'invite':'X'*32})
+        self.assertEqual(invalid.status_code,403)
+        self.assertFalse(any(s['id']==101 for s in self.client.get('/api/team',headers=owner).json()))
+        invite=self.client.post('/api/invites',json={'role':'waiter'},headers=owner).json()['url'].split('=')[1]
+        requested=self.client.post('/api/login',json={'initData':signed(101),'invite':invite})
+        self.assertEqual(requested.status_code,403)
+        self.assertIn('ожидает одобрения',requested.json()['detail'])
+        row=next(s for s in self.client.get('/api/team',headers=owner).json() if s['id']==101)
+        self.assertFalse(row['active'])
+        self.assertEqual(row['role'],'waiter')
+        self.assertEqual(self.client.post('/api/team/101/approve',headers=self.auth(103)).status_code,403)
+        self.assertEqual(self.client.post('/api/team/101/approve',headers=owner).status_code,200)
+        self.assertEqual(self.client.post('/api/login',json={'initData':signed(101)}).status_code,200)
+
+    def test_dashboard_is_scoped_and_does_not_load_course_materials(self):
+        owner=self.auth(999);local=self.auth(103);student=self.auth(101)
+        with server.db() as c:
+            c.execute("INSERT INTO courses(author,restaurant,title,kind,body,source,questions,pass_score,published) VALUES(999,'MOJO','Private','service','Large private body','Source','[]',80,true)")
+        self.assertEqual(self.client.get('/api/dashboard',headers=student).status_code,403)
+        self.assertEqual(self.client.get('/api/dashboard',headers=owner).json()['programs'],1)
+        scoped=self.client.get('/api/dashboard',headers=local)
+        self.assertEqual(scoped.status_code,200)
+        self.assertEqual(scoped.json()['programs'],0)
+        self.assertNotIn('Large private body',scoped.text)
+
     def setUp(self):
         self.schema='pilot_test_'+uuid.uuid4().hex
         self.original=server.db
@@ -989,3 +1033,4 @@ class Integration(unittest.TestCase):
         self.assertEqual(self.client.post('/api/invites',json={'role':'manager'},headers=m).status_code,422)
 
 if __name__=='__main__':unittest.main(verbosity=2)
+

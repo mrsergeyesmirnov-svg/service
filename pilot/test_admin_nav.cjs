@@ -69,8 +69,8 @@ async function main() {
   assert.match(code, /await generateCourseProposal\(cid\)/);
   assert.match(code, /reset_quiz:clear/);
   assert.match(mainCode, /Пройти тест заново|Проверить и опубликовать/);
-  assert.match(html, /learning\.js\?v=20261110-recert/);
-  assert.match(html, /pilot\.js\?v=20261116-telegram-login/);
+  assert.match(html, /learning\.js\?v=20261120-parallel/);
+  assert.match(html, /pilot\.js\?v=20261120-startup-invites/);
   assert.match(html, /dishes\.js\?v=20261027-nav1/);
   assert.match(html, /wine_cards\.js\?v=20261026-1/);
   assert.match(html, /menu_assessments\.js\?v=20261027-stages1/);
@@ -130,6 +130,7 @@ async function main() {
     done:()=>false,
     api:async path=>{
       if(path==="team")return [{active:true}];
+      if(path==="dashboard")return {programs:1,complete:0,assignments:0,events:[]};
       if(path==="courses")return [{published:true,archived:false}];
       if(path==="assignments" || path==="events")return [];
       throw Error("Unknown manager API "+path);
@@ -150,7 +151,7 @@ async function main() {
   managerCtx.user.role="local";
   managerCtx.nav();
   assert.match(navRoot.innerHTML,/data-id="events"/);
-  assert.doesNotMatch(navRoot.innerHTML,/data-id="team"/);
+  assert.match(navRoot.innerHTML,/data-id="team"/);
   managerCtx.user.role="trainee";
   managerCtx.managerMode=false;
   managerCtx.view="home";
@@ -189,3 +190,4 @@ async function main() {
   console.log("MOJO learner path, manager workspace and case outcome: OK");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
+

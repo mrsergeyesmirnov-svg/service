@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
+from starlette.middleware.gzip import GZipMiddleware
 from cases_api import make_router
 from learning import make_learning_router
 from dish_lessons import dish_chapters, map_details, reviewed_dish_signature
@@ -27,6 +28,7 @@ TOKEN = os.getenv('BOT_TOKEN', '')
 OWNER = int(os.getenv('OWNER_TELEGRAM_ID', '0') or '0')
 URL = os.getenv('PUBLIC_URL', 'https://service.139.100.239.232.sslip.io/pilot/')
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 BASE = Path(__file__).parent
 
 def db():
@@ -100,7 +102,11 @@ async def limits(request, call_next):
     except ValueError: content_len = limit+1
     if content_len>limit: return __import__('fastapi').responses.JSONResponse({'detail':'Слишком большой запрос'},status_code=413)
     response=await call_next(request)
-    response.headers['Cache-Control']='no-store'
+    versioned_asset = (request.url.path.startswith('/pilot/') and
+                       request.url.path.endswith(('.js', '.css')) and
+                       request.query_params.get('v') and response.status_code == 200)
+    response.headers['Cache-Control'] = ('public, max-age=86400, immutable'
+                                         if versioned_asset else 'no-store')
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
     return response
@@ -155,15 +161,27 @@ async def login(request:Request):
     with db() as c:
         member=c.execute('SELECT * FROM staff WHERE id=%s AND active',(u['id'],)).fetchone()
         if not member:
-            pending=c.execute('SELECT id FROM staff WHERE id=%s AND NOT active',(u['id'],)).fetchone()
-            if pending:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO')
+            pending=c.execute('SELECT * FROM staff WHERE id=%s AND NOT active FOR UPDATE',(u['id'],)).fetchone()
+            if pending and pending['removed_at'] is None:
+                raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO. Раздел «Команда» → «Новые заявки».')
+            if pending and not invite_token:
+                raise HTTPException(403,'Доступ был закрыт. Получи новое приглашение у менеджера и открой его в Telegram.')
             if not invite_token:
                 raise HTTPException(403,'Сначала откройте приглашение руководителя и нажмите «Старт» в боте')
             invite=c.execute('''SELECT * FROM invites WHERE token=%s AND NOT revoked
                          AND used_by IS NULL AND expires_at>now() FOR UPDATE''',(invite_token,)).fetchone()
             if not invite:raise HTTPException(403,'Приглашение недействительно или уже использовано')
             name=' '.join(str(u.get(k) or '') for k in ('first_name','last_name')).strip()[:200] or str(u['id'])
-            created=c.execute('''INSERT INTO staff(id,name,role,restaurant,bot_started,active)
+            if pending:
+                if pending['role'] not in ('trainee','waiter'):
+                    raise HTTPException(403,'Доступ руководителя восстанавливает администратор')
+                created=c.execute('''UPDATE staff SET name=%s,role=%s,restaurant=%s,
+                             bot_started=true,active=false,removed_at=NULL
+                             WHERE id=%s AND NOT active AND removed_at IS NOT NULL RETURNING id''',
+                             (name,invite['role'],invite['restaurant'],u['id'])).fetchone()
+                audit(c,u['id'],'staff:reapply',invite['restaurant'])
+            else:
+                created=c.execute('''INSERT INTO staff(id,name,role,restaurant,bot_started,active)
                          VALUES(%s,%s,%s,%s,true,false) ON CONFLICT(id) DO NOTHING RETURNING id''',
                          (u['id'],name,invite['role'],invite['restaurant'])).fetchone()
             if not created:raise HTTPException(409,'Учётная запись уже существует')
@@ -175,7 +193,7 @@ async def login(request:Request):
             c.execute('DELETE FROM sessions WHERE expires_at<now()')
             c.execute("INSERT INTO sessions VALUES(%s,%s,now()+interval '8 hours')",(hashlib.sha256(session.encode()).hexdigest(),u['id']))
     # Raise only after the connection context has committed the new staff row.
-    if pending_created:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO')
+    if pending_created:raise HTTPException(403,'Заявка ожидает одобрения руководителя MOJO. Раздел «Команда» → «Новые заявки».')
     return {'token':session,'user':member}
 
 @app.get('/api/me')
@@ -187,6 +205,27 @@ def team(request:Request):
     with db() as c:
         u=require(c,request);manager(u)
         return c.execute('SELECT id,name,role,restaurant,phone,active,bot_started FROM staff WHERE removed_at IS NULL AND (%s OR restaurant=%s) ORDER BY name',(u['role']=='manager',u['restaurant'])).fetchall()
+
+@app.get('/api/dashboard')
+def dashboard(request:Request):
+    """Small manager overview without recipes, question bodies or per-course checks."""
+    with db() as c:
+        u=require(c,request);manager(u)
+        params=(u['role']=='manager',u['restaurant'])
+        programs=c.execute('''SELECT count(*) AS total FROM courses
+                           WHERE published AND NOT archived AND (%s OR restaurant=%s)''',params).fetchone()['total']
+        results=c.execute('''SELECT count(*) AS total, count(*) FILTER (WHERE
+                    CASE WHEN jsonb_array_length(c.questions)>0 THEN
+                      EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id AND t.passed)
+                    ELSE a.acknowledged_at IS NOT NULL END) AS complete
+                FROM assignments a JOIN courses c ON c.id=a.course_id
+                JOIN staff s ON s.id=a.staff_id
+                WHERE NOT c.archived AND (%s OR s.restaurant=%s)''',params).fetchone()
+        events=c.execute('''SELECT id,title,location,starts_at FROM service_events
+                           WHERE published AND NOT cancelled AND starts_at>now()
+                           AND (%s OR restaurant=%s) ORDER BY starts_at,id LIMIT 2''',params).fetchall()
+        return {'programs':programs,'assignments':results['total'],
+                'complete':results['complete'],'events':events}
 
 @app.delete('/api/team/{staff_id}')
 def remove_member(staff_id:int, request:Request):
@@ -545,5 +584,6 @@ if __name__=='__main__':
     with db() as c:c.execute((BASE/'schema.sql').read_text())
     import uvicorn
     uvicorn.run(app,host='0.0.0.0',port=8000,access_log=False)
+
 
 

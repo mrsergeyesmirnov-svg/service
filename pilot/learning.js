@@ -53,23 +53,24 @@ function courseCard(c){
 }
 async function learningPage(page){
  const root=$('#app');root.innerHTML='<p role="status">Загружаем обучение…</p>';
- learningCourses=await api('learning');
- if(user?.role==='waiter')recertAssigned=await api('recertification/assignment');
+ let eventError=false;
+ const [courses,recert,induction,assignments,events]=await Promise.all([
+  api('learning'),
+  user?.role==='waiter'?api('recertification/assignment'):Promise.resolve(null),
+  user?.role==='trainee'&&page!=='catalog'?api('onboarding/me').catch(err=>{console.warn('Onboarding temporarily unavailable:',err.message);return null}):Promise.resolve(null),
+  page==='catalog'?Promise.resolve([]):api('assignments'),
+  page==='catalog'?Promise.resolve([]):api('events').catch(()=>{eventError=true;return []})
+ ]);
+ learningCourses=courses;
+ if(user?.role==='waiter')recertAssigned=recert;
  if(user?.role==='trainee')learningCourses.sort((a,b)=>Number(b.category==='service')-Number(a.category==='service'));
- let induction=null;
- if(user?.role==='trainee'&&page!=='catalog'){
-  try{induction=await api('onboarding/me')}catch(err){console.warn('Onboarding temporarily unavailable:',err.message)}
- }
  if(page==='catalog'){
   courseFilter='all';courseQuery='';
   root.innerHTML=recertEntry()+'<h1>Программа обучения</h1><label class="course-search"><span>Поиск по курсам</span><input id="course-search" type="search" placeholder="Название курса" autocomplete="off"></label><div class="filters" aria-label="Направления обучения">'+btn('Все','filter','all','active')+Object.entries(directions).map(([k,v])=>btn(v,'filter',k,'secondary')).join('')+'</div><div id="course-list">'+(learningCourses.map(courseCard).join('')||'<div class="card">Пока нет опубликованных курсов.</div>')+'</div><div class="practice-entry">'+btn('Практика →','nav','cases','secondary')+'</div>'+(isManager()?btn('Управление Академией','open-manager','','secondary'):'');
   $('#course-search').oninput=e=>{courseQuery=e.target.value;filterCourses(courseFilter)};
   showDishPhotos();return;
  }
- const assignments=await api('assignments');
  const pending=assignments.filter(a=>a.staff_id===user.id&&!a.archived&&!done(a)).sort((a,b)=>a.deadline.localeCompare(b.deadline));
- let events=[],eventError=false;
- try{events=await api('events')}catch(e){eventError=true}
  const event=events.filter(e=>e.published&&!e.cancelled&&new Date(e.starts_at)>new Date()).sort((a,b)=>new Date(a.starts_at)-new Date(b.starts_at))[0];
  const total=learningCourses.reduce((n,c)=>n+c.chapters,0),read=learningCourses.reduce((n,c)=>n+c.read,0);
  const urgent=pending[0],next=urgent||learningCourses.find(c=>!learningDone(c));
@@ -467,4 +468,5 @@ async function saveTextChapters(){
  await api('learning/'+textChapterCourse+'/text-chapters','PUT',{chapters:textChaptersDraft});
  textChapterCourse=null;view='courses';await render();
 }
+
 
